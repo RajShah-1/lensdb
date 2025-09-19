@@ -1,0 +1,6 @@
+videos/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

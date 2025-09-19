@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "traffic-video-pipeline"
+version = "0.1.0"
+description = "Pipeline to sample frames from videos and extract embeddings"
+authors = ["Raj Shah", "Karvy Mohnot"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+opencv-python = "^4.9.0"
+torch = "^2.4.0"
+torchvision = "^0.19.0"
+numpy = "^1.26.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.0"
