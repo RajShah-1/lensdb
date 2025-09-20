@@ -1,18 +1,12 @@
-from pipeline.frame_sampler import FrameSampler
-from src.embeddings.embedder import DummyEmbedder
 from pipeline.pipeline import VideoPipeline
-
+from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
 
 def main():
     video_path = "videos/demo.mp4"
-
-    sampler = FrameSampler(every_n_frames=30)
-    embedder = DummyEmbedder()
-    pipeline = VideoPipeline(video_path, sampler, embedder)
-
-    embeddings = pipeline.run()
+    embedder = CLIPEmbedder(CLIP_VIT_B32)
+    pipeline = VideoPipeline(video_path, embedder)
+    embeddings = pipeline.run(save=True)
     print(f"Extracted {len(embeddings)} embeddings")
-    print(embeddings[:5])
 
 if __name__ == "__main__":
     main()
