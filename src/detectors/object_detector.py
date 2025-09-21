@@ -5,7 +5,7 @@ class ObjectDetector:
     """
     YOLOv8-based object detector for cars & people.
     """
-    def __init__(self, model_name: str = "yolov8n.pt", device=None):
+    def __init__(self, model_name: str = "yolov8m.pt", device=None):
         from ultralytics import YOLO
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = YOLO(model_name)
