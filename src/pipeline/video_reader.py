@@ -3,8 +3,6 @@ from typing import Generator, Literal
 
 import cv2
 
-BATCH_SIZE = 16
-
 class VideoReader:
     """
     Reads and samples frames efficiently from a video file.
@@ -16,10 +14,10 @@ class VideoReader:
     def __init__(
         self,
         video_path: str,
-        mode: Literal["frame", "time"] = "frame",
-        every_n_frames: int = 30,
-        interval_sec: float = 1.0,
-        batch_size: int = BATCH_SIZE,
+        mode: Literal["frame", "time"],
+        every_n_frames: int,
+        interval_sec: float,
+        batch_size: int,
     ):
         self.video_path = Path(video_path)
         if not self.video_path.exists():
@@ -32,8 +30,8 @@ class VideoReader:
 
     def __iter__(self) -> Generator:
         cap = cv2.VideoCapture(str(self.video_path), cv2.CAP_FFMPEG)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+        # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open {self.video_path}")
 

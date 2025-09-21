@@ -7,6 +7,8 @@ from src.pipeline.video_reader import VideoReader
 from src.embeddings.embedder import Embedder
 from src.utils import get_best_device
 
+BATCH_SIZE = 16
+
 class VideoPipeline:
     """End-to-end pipeline: read video → sample frames → embed."""
     def __init__(self, video_path: str, embedder: Embedder, out_dir: str | None = None):
@@ -17,7 +19,11 @@ class VideoPipeline:
         self.frames_dir.mkdir(parents=True, exist_ok=True)
 
     def run(self, save: bool):
-        reader = VideoReader(str(self.video_path))
+        reader = VideoReader(str(self.video_path),
+                             "time",
+                             0,
+                             1,
+                             BATCH_SIZE)
         embeddings = []
         count = 0
         frame_counter = 0
