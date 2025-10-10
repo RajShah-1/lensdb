@@ -13,7 +13,7 @@ def gen_embeddings():
 
 def run_detection():
     video_path = "videos/demo.mp4"
-    detector = ObjectDetector(model_name="yolov8m")
+    detector = ObjectDetector(model_name="yolov8l")
     pipeline = DetectionPipeline(video_path, detector)
     counts = pipeline.run(save=True)
 

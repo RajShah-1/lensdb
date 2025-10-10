@@ -27,22 +27,24 @@ class DetectionPipeline:
 
         with open(counts_file, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["frame_id", "car_count", "people_count"])
+            writer.writerow(["frame_id", "car_count", "people_count", "car_bboxes", "people_bboxes"])
 
             frame_counter = 0
             total_processed = 0
 
             for batch in reader:
                 for frame in batch:
-                    det_counts = self.detector.detect(frame)
+                    frame_path = self.frames_dir / f"frame_{frame_counter:05d}.jpg"
+                    det_counts = self.detector.detect(frame, frame_path=frame_path)
                     writer.writerow([
                         frame_counter,
                         det_counts["car_count"],
                         det_counts["people_count"],
+                        det_counts["car_bboxes"],
+                        det_counts["people_bboxes"],
                     ])
 
                     if save:
-                        frame_path = self.frames_dir / f"frame_{frame_counter:05d}.jpg"
                         cv2.imwrite(str(frame_path), frame)
 
                     frame_counter += 1
