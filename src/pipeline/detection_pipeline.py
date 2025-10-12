@@ -7,6 +7,7 @@ from src.detectors.object_detector import ObjectDetector
 from src.pipeline.video_reader import VideoReader
 
 BATCH_SIZE = 16
+SAVE_INTERVAL = 100  # Save every Nth frame
 
 class DetectionPipeline:
     """Pipeline: read video → run object detection → save counts + frames."""
@@ -17,6 +18,7 @@ class DetectionPipeline:
         self.out_dir = Path(out_dir) if out_dir else Path("data") / self.video_path.stem
         self.frames_dir = self.out_dir / "frames"
         self.frames_dir.mkdir(parents=True, exist_ok=True)
+        self.save_interval = SAVE_INTERVAL  # Save every Nth frame
 
     def run(self, save: bool = True):
         reader = VideoReader(str(self.video_path), "time",
@@ -34,7 +36,10 @@ class DetectionPipeline:
 
             for batch in reader:
                 for frame in batch:
-                    frame_path = self.frames_dir / f"frame_{frame_counter:05d}.jpg"
+                    frame_path = None
+                    if save and frame_counter % self.save_interval == 0:
+                        frame_path = self.frames_dir / f"frame_{frame_counter:05d}.jpg"
+                    
                     det_counts = self.detector.detect(frame, frame_path=frame_path)
                     writer.writerow([
                         frame_counter,
@@ -44,7 +49,7 @@ class DetectionPipeline:
                         det_counts["people_bboxes"],
                     ])
 
-                    if save:
+                    if save and frame_path is not None:
                         cv2.imwrite(str(frame_path), frame)
 
                     frame_counter += 1

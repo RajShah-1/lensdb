@@ -13,6 +13,7 @@ class ObjectDetector:
         from ultralytics import YOLO
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = YOLO(model_name)
+        self.model.to(self.device)
         self.model.fuse()
         self.target_classes = {"person": 0, "car": 2}
         self.save_annotated = save_annotated
