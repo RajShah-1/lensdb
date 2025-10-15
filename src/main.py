@@ -1,8 +1,11 @@
 from pathlib import Path
+
 from pipeline.pipeline import VideoPipeline
 from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
+from src.models.model_configs import MEDIUM, SMALL
 from src.pipeline.detection_pipeline import DetectionPipeline
 from src.detectors.object_detector import ObjectDetector
+from src.training.train_pipeline import finetune_on_virat, pretrain_on_coco
 
 
 def gen_embeddings():
@@ -26,7 +29,7 @@ def run_detection_on_dir(videos_dir: str, model_name: str, annotated: bool):
 
     for vid in videos:
         print(f"\n=== Processing {vid.name} ===")
-        out_dir = Path("data") / vid.stem
+        out_dir = Path("data/VIRAT") / vid.stem
         out_dir.mkdir(parents=True, exist_ok=True)
         pipeline = DetectionPipeline(str(vid), detector, out_dir=out_dir)
         pipeline.run(save=True)
@@ -45,11 +48,10 @@ def gen_embeddings_for_dir(videos_dir: str, embedder_config=None):
     
     for vid in videos:
         print(f"\n=== Processing {vid.name} ===")
-        # Store embeddings in data/{video_stem}/embeddings/ to avoid conflicts with detection CSVs
-        out_dir = Path("data") / vid.stem / "embeddings"
+        out_dir = Path("data/VIRAT") / vid.stem / "embeddings"
         out_dir.mkdir(parents=True, exist_ok=True)
         pipeline = VideoPipeline(str(vid), embedder, out_dir=out_dir)
-        pipeline.run(save=False)
+        pipeline.run(save=True)
 
 if __name__ == "__main__":
     # gen_embeddings()
@@ -57,5 +59,22 @@ if __name__ == "__main__":
     # run_detection_on_dir("/storage/ice1/8/3/rshah647/VIRATGround/videos_original", 
     #                      "yolo11x.pt", 
     #                      False)
-    gen_embeddings_for_dir("/storage/ice1/8/3/rshah647/VIRATGround/videos_original", 
-                           CLIP_VIT_B32)
+    # gen_embeddings_for_dir("/storage/ice1/8/3/rshah647/VIRATGround/videos_original", 
+    #                        CLIP_VIT_B32)
+
+    # pretrain_on_coco(
+    #     coco_dir="data/coco",  # root dir of coco (with train2017, val2017 subdirs)
+    #     target="car",
+    #     model_config=SMALL
+    # )
+
+    finetune_on_virat(
+        data_dir="data/VIRAT",        # root of all video folders
+        target="car",
+        pretrained_checkpoint=None,   # None = from scratch
+        train_ratio=0.4, # 40% train / 60% test
+        model_config=MEDIUM
+    )
+
+
+

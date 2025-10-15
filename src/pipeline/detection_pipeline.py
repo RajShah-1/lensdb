@@ -15,7 +15,7 @@ class DetectionPipeline:
     def __init__(self, video_path: str, detector: ObjectDetector, out_dir: str | None = None):
         self.video_path = Path(video_path)
         self.detector = detector
-        self.out_dir = Path(out_dir) if out_dir else Path("data") / self.video_path.stem
+        self.out_dir = Path(out_dir) if out_dir else Path("data/VIRAT") / self.video_path.stem
         self.frames_dir = self.out_dir / "frames"
         self.frames_dir.mkdir(parents=True, exist_ok=True)
         self.save_interval = SAVE_INTERVAL  # Save every Nth frame

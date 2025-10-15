@@ -7,14 +7,14 @@ from src.pipeline.video_reader import VideoReader
 from src.embeddings.embedder import Embedder
 from src.utils import get_best_device
 
-BATCH_SIZE = 16
+BATCH_SIZE = 128
 
 class VideoPipeline:
     """End-to-end pipeline: read video → sample frames → embed."""
     def __init__(self, video_path: str, embedder: Embedder, out_dir: str | None = None):
         self.video_path = Path(video_path)
         self.embedder = embedder
-        self.out_dir = Path(out_dir) if out_dir else Path("data") / self.video_path.stem
+        self.out_dir = Path(out_dir) if out_dir else Path("data/VIRAT") / self.video_path.stem
         self.frames_dir = self.out_dir / "frames"
         self.frames_dir.mkdir(parents=True, exist_ok=True)
 
@@ -31,11 +31,6 @@ class VideoPipeline:
         for batch in reader:
             embs = self.embedder.embed(batch)
             embeddings.extend(embs)
-            if save: # save frames as images
-                for f in batch:
-                    frame_path = self.frames_dir / f"frame_{frame_counter:05d}.jpg"
-                    cv2.imwrite(str(frame_path), f)
-                    frame_counter += 1
             count += len(batch)
             if count % 100 == 0:
                 print(f"Processed {count} frames")
