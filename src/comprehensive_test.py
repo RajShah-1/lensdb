@@ -84,6 +84,7 @@ def run_comprehensive_tests(
     }
     
     # Test FAISS+MLP pipeline for each threshold
+    # Note: Each threshold is queried independently to get accurate end-to-end latency
     print("\n" + "="*80)
     print("TESTING FAISS+MLP PIPELINE")
     print("="*80)
@@ -93,6 +94,7 @@ def run_comprehensive_tests(
         print(f"Testing with count threshold >= {threshold}")
         print(f"{'─'*80}")
         
+        # Measure end-to-end latency for this specific threshold
         metrics = pipeline.query_with_metrics(
             text_query=target,
             count_threshold=threshold,
@@ -103,7 +105,7 @@ def run_comprehensive_tests(
         all_results['pipeline_results'][threshold] = metrics
         
         # Print results
-        print(f"\n[LATENCY METRICS]")
+        print(f"\n[LATENCY METRICS - End-to-End for threshold >= {threshold}]")
         print(f"  FAISS lookup:       {metrics['faiss_latency_ms']:.2f} ms")
         print(f"  MLP prediction:     {metrics['mlp_latency_ms']:.2f} ms")
         print(f"  Total pipeline:     {metrics['total_latency_ms']:.2f} ms")
@@ -121,6 +123,7 @@ def run_comprehensive_tests(
         print(f"  Retrieved: {metrics['mlp_retrieved']} frames")
     
     # Test YOLO baseline for each threshold
+    # Note: Each threshold is evaluated independently to get accurate end-to-end latency
     print("\n" + "="*80)
     print("TESTING YOLO BASELINE")
     print("="*80)
@@ -130,6 +133,7 @@ def run_comprehensive_tests(
         print(f"Testing with count threshold >= {threshold}")
         print(f"{'─'*80}")
         
+        # Measure end-to-end latency for baseline at this specific threshold
         baseline_metrics = evaluate_baseline_yolo(
             data_dir=data_dir,
             model_name=yolo_model,
@@ -145,9 +149,9 @@ def run_comprehensive_tests(
     print("COMPARISON SUMMARY")
     print("="*80)
     
-    # Latency comparison
+    # Latency comparison (End-to-End measurements for all thresholds)
     print(f"\n{'─'*80}")
-    print("LATENCY COMPARISON (milliseconds)")
+    print("END-TO-END LATENCY COMPARISON (milliseconds)")
     print(f"{'─'*80}")
     latency_table = []
     for threshold in thresholds:
