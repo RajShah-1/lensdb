@@ -42,6 +42,7 @@ class CountEvaluator:
         within_1 = np.mean(np.abs(rounded_preds - targets) <= 1) * 100
         within_2 = np.mean(np.abs(rounded_preds - targets) <= 2) * 100
         
+        recall_metrics = self.get_recall_metrics(targets, predictions)
         return {
             'mae': mae,
             'mse': mse,
@@ -52,7 +53,28 @@ class CountEvaluator:
             'within_2_accuracy': within_2,
             'predictions': predictions,
             'targets': targets,
+            **recall_metrics,
         }
+
+    def get_recall_metrics(self, targets: np.ndarray, predictions: np.ndarray) -> dict:
+        recall_metrics = {}
+        for threshold in [1, 2, 3, 5]:
+            gt_positive = targets >= threshold
+            pred_positive = predictions >= threshold
+            
+            if gt_positive.sum() > 0:
+                tp = np.sum(gt_positive & pred_positive)
+                fp = np.sum(~gt_positive & pred_positive)
+                fn = np.sum(gt_positive & ~pred_positive)
+                
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+                
+                recall_metrics[f'recall_ge{threshold}'] = recall
+                recall_metrics[f'precision_ge{threshold}'] = precision
+                recall_metrics[f'f1_ge{threshold}'] = f1
+        return recall_metrics
     
     def print_results(self, results: dict, target_name: str = "Count"):
         print(f"\n{target_name} Prediction Results:")
@@ -63,4 +85,12 @@ class CountEvaluator:
         print(f"  Exact accuracy: {results['exact_accuracy']:.1f}%")
         print(f"  ±1 accuracy: {results['within_1_accuracy']:.1f}%")
         print(f"  ±2 accuracy: {results['within_2_accuracy']:.1f}%")
+        
+        print(f"\nRecall Metrics (count >= threshold):")
+        for threshold in [1, 2, 3, 5]:
+            recall_key = f'recall_ge{threshold}'
+            if recall_key in results:
+                print(f"  >= {threshold}: Recall={results[recall_key]:.3f}, "
+                      f"Precision={results[f'precision_ge{threshold}']:.3f}, "
+                      f"F1={results[f'f1_ge{threshold}']:.3f}")
 

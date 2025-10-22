@@ -19,6 +19,7 @@ scikit-learn = "^1.7.2"
 ultralytics = "^8.3.202"
 pandas = "^2.3.2"
 pycocotools = "^2.0.10"
+faiss-cpu = "^1.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
