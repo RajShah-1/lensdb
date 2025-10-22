@@ -70,14 +70,15 @@ class SemanticQueryPipeline:
             video_results = []
             for i, frame_data in enumerate(frames_data):
                 pred_count = float(predictions[i])
+                pred_count_rounded = round(pred_count)
                 
-                if count_predicate and not count_predicate(pred_count):
+                if count_predicate and not count_predicate(pred_count_rounded):
                     continue
                 
                 video_results.append({
                     'frame_idx': frame_data['frame_idx'],
                     'similarity': frame_data['similarity'],
-                    'predicted_count': pred_count
+                    'predicted_count': pred_count_rounded
                 })
             
             if video_results:
@@ -175,12 +176,13 @@ class SemanticQueryPipeline:
             video_results = []
             for i, frame_data in enumerate(frames_data):
                 pred_count = float(predictions[i])
+                pred_count_rounded = round(pred_count)
                 
-                if pred_count >= count_threshold:
+                if pred_count_rounded >= count_threshold:
                     video_results.append({
                         'frame_idx': frame_data['frame_idx'],
                         'similarity': frame_data['similarity'],
-                        'predicted_count': pred_count
+                        'predicted_count': pred_count_rounded
                     })
             
             if video_results:
