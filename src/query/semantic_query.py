@@ -21,7 +21,7 @@ class SemanticQueryPipeline:
         self.device = get_best_device()
         self.model = CountPredictor(model_config).to(self.device)
         
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.eval()
         
@@ -35,7 +35,7 @@ class SemanticQueryPipeline:
         
         print(f"\n[Stage 1] FAISS Prefilter")
         candidates = self.index.query_text(text_query, top_k=self.top_k, 
-                                          similarity_threshold=self.threshold)
+                                           similarity_threshold=self.threshold)
         
         if not candidates:
             print("No frames passed prefilter")

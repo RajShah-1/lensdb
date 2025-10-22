@@ -9,7 +9,8 @@ from src.utils import get_best_device
 
 class CountTrainer:
     def __init__(self, model: CountPredictor, lr: float = 1e-3, 
-                 weight_decay: float = 1e-4, device: str | None = None):
+                 weight_decay: float = 1e-4, device: str | None = None,
+                 loss_type: str = "mse", underpredict_penalty: float = 1.0):
         self.model = model
         self.device = device or get_best_device()
         self.model.to(self.device)
@@ -19,10 +20,40 @@ class CountTrainer:
             lr=lr, 
             weight_decay=weight_decay
         )
-        self.criterion = nn.MSELoss()
+        
+        self.loss_type = loss_type
+        self.underpredict_penalty = underpredict_penalty
+        
+        if loss_type == "mse":
+            self.criterion = nn.MSELoss()
+        elif loss_type == "mae":
+            self.criterion = nn.L1Loss()
+        elif loss_type == "huber":
+            self.criterion = nn.SmoothL1Loss()
+        else:
+            raise ValueError(f"Unknown loss type: {loss_type}")
         
         self.best_val_loss = float('inf')
         self.patience_counter = 0
+    
+    def compute_loss(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Compute loss with optional asymmetric penalty for under-prediction."""
+        if self.underpredict_penalty == 1.0:
+            return self.criterion(predictions, targets)
+        
+        residuals = predictions - targets
+        
+        if self.loss_type == "mse":
+            squared_errors = residuals ** 2
+            weights = torch.where(residuals < 0, self.underpredict_penalty, 1.0)
+            return (weights * squared_errors).mean()
+        elif self.loss_type == "mae":
+            abs_errors = torch.abs(residuals)
+            weights = torch.where(residuals < 0, self.underpredict_penalty, 1.0)
+            return (weights * abs_errors).mean()
+        else:
+            base_loss = self.criterion(predictions, targets)
+            return base_loss
     
     def train_epoch(self, dataloader: DataLoader) -> float:
         self.model.train()
@@ -34,7 +65,7 @@ class CountTrainer:
             
             self.optimizer.zero_grad()
             predictions = self.model(embeddings.float())
-            loss = self.criterion(predictions, counts.float())
+            loss = self.compute_loss(predictions, counts.float())
 
             loss.backward()
             self.optimizer.step()
@@ -53,7 +84,7 @@ class CountTrainer:
                 counts = counts.to(self.device)
                 
                 predictions = self.model(embeddings.float())
-                loss = self.criterion(predictions, counts.float())
+                loss = self.compute_loss(predictions, counts.float())
 
                 total_loss += loss.item() * len(embeddings)
         

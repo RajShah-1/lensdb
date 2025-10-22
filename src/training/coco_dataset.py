@@ -83,10 +83,7 @@ class COCOCountDataset(Dataset):
         if self.embeddings is not None:
             embedding = self.embeddings[idx]
         else:
-            img_info = self.coco.imgs[img_id]
-            img_path = self.images_dir / img_info['file_name']
-            img = cv2.imread(str(img_path))
-            embedding = np.zeros(512)
+            raise ValueError("Embeddings not precomputed")
         
         return torch.from_numpy(embedding).float(), float(count)
 

@@ -35,7 +35,13 @@ def pretrain_on_coco(coco_dir: str, target: str, model_config=SMALL):
     val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=4)
     
     model = CountPredictor(model_config)
-    trainer = CountTrainer(model, lr=1e-3, weight_decay=1e-4)
+    trainer = CountTrainer(
+        model, 
+        lr=1e-3, 
+        weight_decay=1e-4,
+        loss_type="huber",
+        underpredict_penalty=2.0
+    )
     
     checkpoint_path = f"models/checkpoints/{target}_coco_pretrained.pth"
     trainer.train(train_loader, val_loader, epochs=50, patience=10, checkpoint_path=checkpoint_path)
@@ -61,14 +67,21 @@ def finetune_on_virat(data_dir: str, target: str, pretrained_checkpoint: str,
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=2)
     
     model = CountPredictor(model_config)
-    trainer = CountTrainer(model, lr=1e-4, weight_decay=1e-5)
-
+    
     if pretrained_checkpoint:
-        checkpoint = torch.load(pretrained_checkpoint)
+        checkpoint = torch.load(pretrained_checkpoint, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Loaded pre-trained model from {pretrained_checkpoint}")
     else:
         print("No pre-trained checkpoint provided — training from scratch.")
+    
+    trainer = CountTrainer(
+        model, 
+        lr=1e-4, 
+        weight_decay=1e-5,
+        loss_type="huber",
+        underpredict_penalty=3.0
+    )
     
     checkpoint_path = f"models/checkpoints/{target}_virat_finetuned.pth"
     trainer.train(train_loader, test_loader, epochs=30, patience=5, checkpoint_path=checkpoint_path)
