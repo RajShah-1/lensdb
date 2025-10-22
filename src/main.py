@@ -10,7 +10,8 @@ from src.pipeline.detection_pipeline import DetectionPipeline
 from src.detectors.object_detector import ObjectDetector
 from src.training.train_pipeline import finetune_on_virat, pretrain_on_coco
 from src.indexing.faiss_index import FAISSIndex
-from src.query.semantic_query import SemanticQueryPipeline, simple_query
+from src.query.semantic_query import SemanticQueryPipeline
+from src.baseline import evaluate_baseline_yolo
 
 def run_detection():
     video_path = "videos/demo.mp4"
@@ -61,13 +62,16 @@ def run_semantic_query():
     
     Example: Find frames with cars (count >= 2)
     """
-    results = simple_query(
+    pipeline = SemanticQueryPipeline(
         data_dir="data/VIRAT",
         checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
         model_config=MEDIUM,
+        threshold=0.2
+    )
+    
+    results = pipeline.query(
         text_query="car",
-        min_count=2.0,              # Only frames with 2+ cars
-        similarity_threshold=0.2     # Cosine similarity threshold
+        count_predicate=lambda c: c >= 2.0
     )
     return results
 
@@ -95,7 +99,7 @@ def evaluate_retrieval(data_dir: str, checkpoint_path: str, model_config,
                        similarity_threshold: float = 0.2, num_videos: int = 2):
     """
     Evaluate retrieval quality against ground truth oracle model.
-    Retrieves frames with count >= count_threshold for first num_videos.
+    Measures metrics at FAISS and MLP stages separately.
     """
     data_path = Path(data_dir)
     video_dirs = sorted([d for d in data_path.iterdir() if d.is_dir() and not d.name.startswith("_")])
@@ -106,11 +110,10 @@ def evaluate_retrieval(data_dir: str, checkpoint_path: str, model_config,
     eval_videos = [v.name for v in video_dirs[:num_videos]]
     
     print(f"\n{'='*70}")
-    print(f"RETRIEVAL EVALUATION: {target} (count >= {count_threshold})")
+    print(f"ABLATION STUDY: {target} (count >= {count_threshold})")
     print(f"{'='*70}")
     print(f"Videos: {', '.join(eval_videos)}")
     print(f"Similarity threshold: {similarity_threshold}")
-    print(f"Count threshold: {count_threshold}")
     
     pipeline = SemanticQueryPipeline(
         data_dir=data_dir,
@@ -119,113 +122,39 @@ def evaluate_retrieval(data_dir: str, checkpoint_path: str, model_config,
         threshold=similarity_threshold
     )
     
-    print(f"\n{'='*70}")
-    print(f"BEFORE COUNT FILTERING - FAISS + Predictions")
-    print(f"{'='*70}")
-    
-    unfiltered_results = pipeline.query(
+    # Get metrics from pipeline which now includes timing
+    metrics = pipeline.query_with_metrics(
         text_query=target,
-        count_predicate=None
+        count_threshold=count_threshold,
+        eval_videos=eval_videos,
+        data_dir=data_dir
     )
     
-    unfiltered_eval = {k: v for k, v in unfiltered_results.items() if k in eval_videos}
-    print(f"\nFrames from eval videos BEFORE count filter:")
-    for vid in eval_videos:
-        if vid in unfiltered_eval:
-            frames = unfiltered_eval[vid]['frames']
-            print(f"  {vid}: {len(frames)} frames, avg_count={unfiltered_eval[vid]['avg_count']:.2f}")
-            if frames:
-                counts_list = [f['predicted_count'] for f in frames]
-                print(f"    Count range: [{min(counts_list):.2f}, {max(counts_list):.2f}]")
-                passing = sum(1 for c in counts_list if c >= count_threshold)
-                print(f"    Frames with count >= {count_threshold}: {passing}/{len(frames)}")
-                
-                gt_counts = load_ground_truth(data_dir, vid, target)
-                gt_positive_frames = [fid for fid, count in gt_counts.items() if count >= count_threshold]
-                if gt_positive_frames:
-                    print(f"    GT frames with count >= {count_threshold}: {gt_positive_frames}")
-                    frame_idx_to_pred = {f['frame_idx']: f['predicted_count'] for f in frames}
-                    print(f"    Model predictions for GT positive frames:")
-                    for fid in gt_positive_frames:
-                        if fid in frame_idx_to_pred:
-                            print(f"      Frame {fid}: GT={gt_counts[fid]}, Pred={frame_idx_to_pred[fid]:.2f}")
-                        else:
-                            print(f"      Frame {fid}: GT={gt_counts[fid]}, Pred=NOT_RETRIEVED (filtered by FAISS)")
-        else:
-            print(f"  {vid}: 0 frames")
-    
+    # Print ablation study results
     print(f"\n{'='*70}")
-    print(f"AFTER COUNT FILTERING (count >= {count_threshold})")
+    print(f"ABLATION STUDY RESULTS")
     print(f"{'='*70}")
     
-    all_results = pipeline.query(
-        text_query=target,
-        count_predicate=lambda c: c >= count_threshold
-    )
+    print(f"\n[LATENCY METRICS]")
+    print(f"  FAISS lookup latency:  {metrics['faiss_latency_ms']:.2f} ms")
+    print(f"  MLP prediction latency: {metrics['mlp_latency_ms']:.2f} ms")
+    print(f"  Total pipeline latency: {metrics['total_latency_ms']:.2f} ms")
     
-    results = {k: v for k, v in all_results.items() if k in eval_videos}
+    print(f"\n[FAISS STAGE METRICS]")
+    print(f"  Precision: {metrics['faiss_precision']:.3f}")
+    print(f"  Recall:    {metrics['faiss_recall']:.3f}")
+    print(f"  F1:        {metrics['faiss_f1']:.3f}")
+    print(f"  Retrieved frames: {metrics['faiss_retrieved']}")
     
-    print(f"\n{'='*70}")
-    print(f"GROUND TRUTH COMPARISON")
-    print(f"{'='*70}")
-    print(f"Filtering results to evaluation videos only...")
-    print(f"Results in eval videos: {list(results.keys())}")
-    
-    total_tp, total_fp, total_fn = 0, 0, 0
-    
-    for video_name in eval_videos:
-        gt_counts = load_ground_truth(data_dir, video_name, target)
-        total_frames = len(gt_counts)
-        
-        gt_positive = {fid for fid, count in gt_counts.items() if count >= count_threshold}
-        
-        if video_name in results:
-            retrieved_frames = {f['frame_idx'] for f in results[video_name]['frames']}
-        else:
-            retrieved_frames = set()
-        
-        tp = len(gt_positive & retrieved_frames)
-        fp = len(retrieved_frames - gt_positive)
-        fn = len(gt_positive - retrieved_frames)
-        
-        total_tp += tp
-        total_fp += fp
-        total_fn += fn
-        
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-        
-        print(f"\n{video_name}")
-        print(f"  Total frames: {total_frames}")
-        print(f"  GT positives (count >= {count_threshold}): {len(gt_positive)}")
-        print(f"  Retrieved: {len(retrieved_frames)}")
-        print(f"  TP={tp}, FP={fp}, FN={fn}")
-        print(f"  Precision: {precision:.3f}")
-        print(f"  Recall: {recall:.3f}")
-        print(f"  F1: {f1:.3f}")
-    
-    overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
-    overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
-    overall_f1 = 2 * overall_precision * overall_recall / (overall_precision + overall_recall) \
-        if (overall_precision + overall_recall) > 0 else 0.0
+    print(f"\n[MLP STAGE METRICS (Final Pipeline)]")
+    print(f"  Precision: {metrics['mlp_precision']:.3f}")
+    print(f"  Recall:    {metrics['mlp_recall']:.3f}")
+    print(f"  F1:        {metrics['mlp_f1']:.3f}")
+    print(f"  Retrieved frames: {metrics['mlp_retrieved']}")
     
     print(f"\n{'='*70}")
-    print(f"OVERALL METRICS")
-    print(f"{'='*70}")
-    print(f"TP={total_tp}, FP={total_fp}, FN={total_fn}")
-    print(f"Precision: {overall_precision:.3f}")
-    print(f"Recall: {overall_recall:.3f}")
-    print(f"F1: {overall_f1:.3f}")
-
-    return {
-        'precision': overall_precision,
-        'recall': overall_recall,
-        'f1': overall_f1,
-        'tp': total_tp,
-        'fp': total_fp,
-        'fn': total_fn
-    }
+    
+    return metrics
 
 
 if __name__ == "__main__":
@@ -283,6 +212,17 @@ if __name__ == "__main__":
         similarity_threshold=0.2,
         num_videos=2
     )
+    
+    # ========================================
+    # STEP 7: Evaluate baseline YOLO11 (for comparison)
+    # ========================================
+    # evaluate_baseline_yolo(
+    #     data_dir="data/VIRAT",
+    #     model_name="yolo11n",
+    #     target="car",
+    #     count_threshold=1,
+    #     num_videos=2
+    # )
 
 
 

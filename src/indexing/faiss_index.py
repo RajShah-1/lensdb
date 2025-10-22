@@ -1,6 +1,7 @@
 import faiss
 import numpy as np
 import torch
+import time
 from pathlib import Path
 
 from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
@@ -69,7 +70,7 @@ class FAISSIndex:
         return self
     
     def query_text(self, text_query: str, top_k: int | None = None, 
-                   similarity_threshold: float = 0.0) -> dict:
+                   similarity_threshold: float = 0.0):
         if self.index is None:
             self.load()
         
@@ -83,7 +84,11 @@ class FAISSIndex:
         query_vec = query_vec / (np.linalg.norm(query_vec, axis=1, keepdims=True) + 1e-8)
         
         k = top_k if top_k else self.index.ntotal
+        
+        # Measure FAISS search latency
+        start_time = time.perf_counter()
         similarities, indices = self.index.search(query_vec, k)
+        faiss_latency_ms = (time.perf_counter() - start_time) * 1000
         
         mask = similarities[0] >= similarity_threshold
         filtered_indices = indices[0][mask]
@@ -117,4 +122,4 @@ class FAISSIndex:
         for video_name, frames in results.items():
             print(f"  {video_name}: {len(frames)} frames")
         
-        return results
+        return results, faiss_latency_ms
