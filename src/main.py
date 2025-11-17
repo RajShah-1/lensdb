@@ -13,6 +13,8 @@ from src.indexing.faiss_index import FAISSIndex
 from src.query.semantic_query import SemanticQueryPipeline
 from src.baseline import evaluate_baseline_yolo
 from src.keyframe.keyframe_selectors import EmbeddingNoveltyKF, SSIMFlowKF, WindowKCenterKF
+from src.benchmark_functions import benchmark_baseline, benchmark_embds, benchmark_with_kf
+from src.comprehensive_test import run_comprehensive_tests
 
 def run_detection():
     video_path = "videos/demo.mp4"
@@ -137,15 +139,99 @@ def evaluate_retrieval(data_dir: str, checkpoint_path: str, model_config,
     return metrics
 
 
+# ============================================================================
+# BENCHMARK FUNCTIONS (modular testing interface)
+# ============================================================================
+
+def run_baseline_benchmark():
+    """
+    Run YOLO baseline benchmark only.
+    Quick way to test baseline performance.
+    """
+    results = benchmark_baseline(
+        data_dir="data/VIRAT",
+        target="car",
+        num_videos=5,
+        thresholds=[0, 1, 2],
+        yolo_model="yolo11m"
+    )
+    return results
+
+
+def run_embedding_benchmark():
+    """
+    Run embedding-based pipeline benchmark (no keyframes).
+    Tests standard FAISS+MLP performance.
+    """
+    results = benchmark_embds(
+        data_dir="data/VIRAT",
+        checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
+        model_config=LARGE3,
+        target="car",
+        similarity_threshold=0.2,
+        num_videos=5,
+        thresholds=[0, 1, 2]
+    )
+    return results
+
+
+def run_keyframe_benchmark(method="emb_novelty"):
+    """
+    Run keyframe-based pipeline benchmark.
+    
+    Args:
+        method: Keyframe selector ('emb_novelty', 'ssim_flow', 'kcenter')
+    """
+    results = benchmark_with_kf(
+        kf_method=method,
+        data_dir="data/VIRAT",
+        checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
+        model_config=LARGE3,
+        target="car",
+        similarity_threshold=0.2,
+        num_videos=5,
+        thresholds=[0, 1, 2],
+        kf_params={'k_mad': 2.0, 'min_spacing': 6},
+        force_regenerate=False,
+        videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
+    )
+    return results
+
+
+def run_full_comparison():
+    """
+    Run comprehensive comparison of all methods.
+    Includes baseline, embeddings, and keyframe-based approaches.
+    """
+    results = run_comprehensive_tests(
+        data_dir="data/VIRAT",
+        checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
+        model_config=LARGE3,
+        target="car",
+        similarity_threshold=0.2,
+        num_videos=5,
+        thresholds=[0, 1, 2, 3, 4, 5],
+        yolo_model="yolo11m",
+        output_file="results/comprehensive_test_results.json",
+        test_keyframes=True,
+        keyframe_selectors=['emb_novelty'],
+        keyframe_params={'emb_novelty': {'k_mad': 2.0, 'min_spacing': 6}},
+        force_regenerate_keyframes=False,
+        videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
+    )
+    return results
+
+
 if __name__ == "__main__":
-    video_path = "videos/demo.mp4"
-    out_dir = "data/demo"
+    run_keyframe_benchmark()
+    # video_path = "videos/demo.mp4"
+    # out_dir = "data/demo"
     
-    embedder = CLIPEmbedder(CLIP_VIT_B32)
-    keyframe_selector = SSIMFlowKF()
+    # embedder = CLIPEmbedder(CLIP_VIT_B32)
+    # keyframe_selector = SSIMFlowKF()
     
-    pipeline = KeyframePipeline(video_path, embedder, keyframe_selector, out_dir=out_dir)
-    results = pipeline.run(save=True)
+    # pipeline = KeyframePipeline(video_path, embedder, keyframe_selector, out_dir=out_dir)
+    # results = pipeline.run(save=True)
 
 
 

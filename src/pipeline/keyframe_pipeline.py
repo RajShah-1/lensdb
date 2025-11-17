@@ -2,11 +2,24 @@ from pathlib import Path
 import numpy as np
 
 from src.pipeline.video_reader import VideoReader
-from src.embeddings.embedder import Embedder
+from src.embeddings.embedder import Embedder, CLIPEmbedder, CLIP_VIT_B32
 from src.keyframe.keyframe_base import BaseKeyframeSelector
+from src.keyframe.keyframe_selectors import EmbeddingNoveltyKF, SSIMFlowKF, WindowKCenterKF
 from src.utils import get_best_device
 
 BATCH_SIZE = 128
+
+
+def get_keyframe_selector(selector_name: str, **kwargs):
+    """Get keyframe selector by name."""
+    selectors = {
+        'emb_novelty': EmbeddingNoveltyKF,
+        'ssim_flow': SSIMFlowKF,
+        'kcenter': WindowKCenterKF
+    }
+    if selector_name not in selectors:
+        raise ValueError(f"Unknown selector: {selector_name}. Choose from {list(selectors.keys())}")
+    return selectors[selector_name](**kwargs)
 
 
 class KeyframePipeline:
@@ -136,3 +149,92 @@ class KeyframePipeline:
             'all_frame_count': len(frames),
             'keyframe_scores': kf_result.score
         }
+
+
+def process_video_folder(
+    data_dir: str,
+    videos_source_dir: str,
+    selector_name: str = 'emb_novelty',
+    selector_params: dict = None,
+    embedder_config = CLIP_VIT_B32,
+    num_videos: int = None,
+    force_regenerate: bool = False
+):
+    """
+    Process multiple videos in a folder with keyframe selection.
+    
+    Args:
+        data_dir: Output directory for embeddings
+        videos_source_dir: Directory containing source .mp4 files
+        selector_name: Keyframe selector name
+        selector_params: Parameters for the selector
+        embedder_config: Embedder configuration
+        num_videos: Number of videos to process (None = all)
+        force_regenerate: If True, regenerate even if embeddings exist
+    
+    Returns:
+        List of metadata dictionaries for each video
+    """
+    data_path = Path(data_dir)
+    video_dirs = sorted([d for d in data_path.iterdir() 
+                        if d.is_dir() and not d.name.startswith("_")])
+    
+    if num_videos is not None:
+        video_dirs = video_dirs[:num_videos]
+    
+    embedder = CLIPEmbedder(embedder_config)
+    selector = get_keyframe_selector(selector_name, **(selector_params or {}))
+    
+    results = []
+    print(f"\n{'='*80}")
+    print(f"PROCESSING {len(video_dirs)} VIDEOS WITH KEYFRAMES")
+    print(f"Selector: {selector_name}, Source: {videos_source_dir}")
+    print(f"{'='*80}\n")
+    
+    for i, video_dir in enumerate(video_dirs, 1):
+        video_path = Path(videos_source_dir) / f"{video_dir.name}.mp4"
+        if not video_path.exists():
+            print(f"[{i}/{len(video_dirs)}] ✗ Video not found: {video_path}")
+            continue
+        
+        embeddings_dir = video_dir / "embeddings"
+        metadata_file = embeddings_dir / "metadata.npy"
+        
+        if metadata_file.exists() and not force_regenerate:
+            metadata = np.load(metadata_file, allow_pickle=True).item()
+            if metadata.get('uses_keyframes', False):
+                print(f"[{i}/{len(video_dirs)}] ✓ Keyframes already exist for {video_dir.name}")
+                results.append({
+                    'video_name': video_dir.name,
+                    'total_frames': metadata['total_frames'],
+                    'num_keyframes': metadata['num_keyframes'],
+                    'compression_ratio': metadata['compression_ratio'],
+                    'selector_name': selector_name
+                })
+                continue
+        
+        try:
+            print(f"[{i}/{len(video_dirs)}] Processing {video_dir.name}...")
+            pipeline = KeyframePipeline(str(video_path), embedder, selector, out_dir=str(video_dir))
+            result = pipeline.run(save=True)
+            
+            metadata = {
+                'video_name': video_dir.name,
+                'total_frames': result['all_frame_count'],
+                'num_keyframes': len(result['keyframe_indices']),
+                'compression_ratio': result['all_frame_count'] / len(result['keyframe_indices']),
+                'selector_name': selector_name
+            }
+            results.append(metadata)
+            print(f"✓ {metadata['num_keyframes']} keyframes ({metadata['compression_ratio']:.1f}x)\n")
+        except Exception as e:
+            print(f"✗ Error: {e}\n")
+    
+    if results:
+        print(f"{'='*80}")
+        print(f"SUMMARY: {len(results)}/{len(video_dirs)} videos processed")
+        avg_compression = sum(r['compression_ratio'] for r in results) / len(results)
+        print(f"Average compression: {avg_compression:.1f}x")
+        print(f"{'='*80}\n")
+    
+    return results

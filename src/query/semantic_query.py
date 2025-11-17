@@ -160,7 +160,13 @@ class SemanticQueryPipeline:
             gt_positive = {fid for fid, count in gt_counts.items() if count >= count_threshold}
             
             if video_name in candidates:
-                retrieved_frames = {f['frame_idx'] for f in candidates[video_name]}
+                # Expand keyframes to frames for proper FAISS evaluation
+                keyframe_results = [{'frame_idx': f['frame_idx'], 
+                                    'similarity': f['similarity'], 
+                                    'predicted_count': 0} 
+                                   for f in candidates[video_name]]
+                expanded_results = self._expand_keyframes_to_frames(video_name, keyframe_results)
+                retrieved_frames = {f['frame_idx'] for f in expanded_results}
             else:
                 retrieved_frames = set()
             

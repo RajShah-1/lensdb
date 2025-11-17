@@ -1,5 +1,6 @@
-from typing import Tuple
+"""Utility modules for LensDB."""
 
+from typing import Tuple
 import cv2
 import numpy as np
 import torch
@@ -20,7 +21,15 @@ def get_best_device() -> torch.device:
     else:
         return torch.device("cpu")
 
+
 def resize_image(frame: np.ndarray, input_size: Tuple[int, int]) -> Image:
     resized = cv2.resize(frame, input_size, interpolation=cv2.INTER_LINEAR)
     image = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
     return image
+
+
+__all__ = [
+    'get_best_device',
+    'resize_image'
+]
+
