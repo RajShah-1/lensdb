@@ -44,9 +44,12 @@ class KeyframePipeline:
         return np.array(embeddings)
     
     def _select_keyframes(self, embeddings, frames):
-        """Select keyframes from embeddings."""
-        normalized = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
-        return self.keyframe_selector.select(embs=normalized, frames=frames, meta=None)
+        """Select keyframes from embeddings or frames."""
+        if embeddings is not None:
+            normalized = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
+            return self.keyframe_selector.select(embs=normalized, frames=frames, meta=None)
+        else:
+            return self.keyframe_selector.select(embs=None, frames=frames, meta=None)
     
     def _build_keyframe_mapping(self, keyframe_indices, total_frames):
         """Build mapping from keyframe to represented frames."""

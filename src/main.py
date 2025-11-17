@@ -142,7 +142,7 @@ if __name__ == "__main__":
     out_dir = "data/demo"
     
     embedder = CLIPEmbedder(CLIP_VIT_B32)
-    keyframe_selector = SSIMFlowKF(k_mad=3.0, min_spacing=12, diversity_delta=0.12, ema_alpha=0.2)
+    keyframe_selector = SSIMFlowKF()
     
     pipeline = KeyframePipeline(video_path, embedder, keyframe_selector, out_dir=out_dir)
     results = pipeline.run(save=True)
