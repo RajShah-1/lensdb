@@ -12,7 +12,7 @@ from src.training.train_pipeline import finetune_on_virat, pretrain_on_coco
 from src.indexing.faiss_index import FAISSIndex
 from src.query.semantic_query import SemanticQueryPipeline
 from src.baseline import evaluate_baseline_yolo
-from src.keyframe.keyframe_selectors import EmbeddingNoveltyKF, WindowKCenterKF
+from src.keyframe.keyframe_selectors import EmbeddingNoveltyKF, SSIMFlowKF, WindowKCenterKF
 
 def run_detection():
     video_path = "videos/demo.mp4"
@@ -138,39 +138,14 @@ def evaluate_retrieval(data_dir: str, checkpoint_path: str, model_config,
 
 
 if __name__ == "__main__":
-    # STEP 1: Generate keyframe embeddings
-    # gen_embeddings_for_dir("/path/to/videos")
-    # gen_embeddings_for_dir("/path/to/videos", keyframe_selector=WindowKCenterKF(window=150, k=3))
+    video_path = "videos/demo.mp4"
+    out_dir = "data/demo"
     
-    # STEP 2: Generate ground truth (optional for training)
-    # run_detection_on_dir("/path/to/videos", "yolo11x.pt", False)
+    embedder = CLIPEmbedder(CLIP_VIT_B32)
+    keyframe_selector = SSIMFlowKF(k_mad=3.0, min_spacing=12, diversity_delta=0.12, ema_alpha=0.2)
     
-    # STEP 3: Train count predictor
-    pretrain_on_coco(coco_dir="data/coco", target="car", model_config=LARGE3)
-    finetune_on_virat(
-        data_dir="data/VIRAT",
-        target="car",
-        pretrained_checkpoint="models/checkpoints/car_coco_pretrained.pth",
-        train_ratio=0.5,
-        model_config=LARGE3
-    )
-    
-    # STEP 4: Build FAISS index
-    # build_index("data/VIRAT")
-    
-    # STEP 5: Run queries
-    # run_semantic_query()
-    
-    # STEP 6: Evaluate
-    evaluate_retrieval(
-        data_dir="data/VIRAT",
-        checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
-        model_config=LARGE3,
-        target="car",
-        count_threshold=1,
-        similarity_threshold=0.2,
-        num_videos=2
-    )
+    pipeline = KeyframePipeline(video_path, embedder, keyframe_selector, out_dir=out_dir)
+    results = pipeline.run(save=True)
 
 
 

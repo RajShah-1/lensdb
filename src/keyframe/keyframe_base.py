@@ -13,6 +13,7 @@ class KFResult:
 class BaseKeyframeSelector(ABC):
     """Base class for all keyframe selectors."""
     name: str = "base"
+    needs_embeddings: bool = True  # Whether this selector requires embeddings
 
     @abstractmethod
     def select(

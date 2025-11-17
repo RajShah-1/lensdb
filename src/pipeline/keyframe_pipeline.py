@@ -86,17 +86,33 @@ class KeyframePipeline:
         frames = self._sample_frames()
         print(f"Sampled {len(frames)} frames")
         
-        print("\n[2/4] Generating embeddings...")
-        all_embeddings = self._embed_frames(frames)
+        # If the keyframe selector needs embeddings, only then we need to generate embeddings for all frames
+        # Otherwise, we can select keyframes based on the frames directly.
+        if self.keyframe_selector.needs_embeddings:
+            print("\n[2/4] Generating embeddings...")
+            all_embeddings = self._embed_frames(frames)
+            
+            print("\n[3/4] Selecting keyframes...")
+            kf_result = self._select_keyframes(all_embeddings, frames)
+            keyframe_indices = kf_result.indices
+            compression = len(frames) / len(keyframe_indices)
+            print(f"Selected {len(keyframe_indices)} keyframes (compression: {compression:.1f}x)")
+            
+            print("\n[4/4] Building metadata...")
+            keyframe_embeddings = all_embeddings[keyframe_indices]
+        else:
+            print("\n[2/4] Selecting keyframes (frame-based)...")
+            kf_result = self._select_keyframes(None, frames)
+            keyframe_indices = kf_result.indices
+            compression = len(frames) / len(keyframe_indices)
+            print(f"Selected {len(keyframe_indices)} keyframes (compression: {compression:.1f}x)")
+            
+            print("\n[3/4] Generating embeddings for keyframes only...")
+            keyframe_frames = [frames[i] for i in keyframe_indices]
+            keyframe_embeddings = self._embed_frames(keyframe_frames)
+            
+            print("\n[4/4] Building metadata...")
         
-        print("\n[3/4] Selecting keyframes...")
-        kf_result = self._select_keyframes(all_embeddings, frames)
-        keyframe_indices = kf_result.indices
-        compression = len(frames) / len(keyframe_indices)
-        print(f"Selected {len(keyframe_indices)} keyframes (compression: {compression:.1f}x)")
-        
-        print("\n[4/4] Building metadata...")
-        keyframe_embeddings = all_embeddings[keyframe_indices]
         keyframe_mapping = self._build_keyframe_mapping(keyframe_indices, len(frames))
         
         if save:

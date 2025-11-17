@@ -8,6 +8,8 @@ from .keyframe_base import (
 # ---------- 1) Embedding Novelty ----------
 class EmbeddingNoveltyKF(BaseKeyframeSelector):
     name = "emb_novelty"
+    needs_embeddings = True
+    
     def __init__(self, k_mad=2.0, min_spacing=6, diversity_delta=0.12, ema_alpha=0.2):
         self.k_mad = k_mad; self.min_spacing = min_spacing
         self.diversity_delta = diversity_delta; self.ema_alpha = ema_alpha
@@ -25,6 +27,8 @@ class EmbeddingNoveltyKF(BaseKeyframeSelector):
 # ---------- 2) SSIM + (optional) Optical Flow ----------
 class SSIMFlowKF(BaseKeyframeSelector):
     name = "ssim_flow"
+    needs_embeddings = False
+    
     def __init__(self, w_flow=0.3, k_mad=3.0, min_spacing=12, ema_alpha=0.2):
         self.w_flow = w_flow; self.k_mad = k_mad; self.min_spacing = min_spacing; self.ema_alpha = ema_alpha
 
@@ -67,6 +71,8 @@ class SSIMFlowKF(BaseKeyframeSelector):
 # ---------- 3) Windowed k-Center (coverage control) ----------
 class WindowKCenterKF(BaseKeyframeSelector):
     name = "kcenter"
+    needs_embeddings = True
+    
     def __init__(self, window=150, k=3, delta=0.12):
         self.window = window; self.k = k; self.delta = delta
 
