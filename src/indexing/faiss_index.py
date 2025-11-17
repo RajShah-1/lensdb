@@ -33,14 +33,21 @@ class FAISSIndex:
             embs = np.load(emb_path).astype("float32")
             embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
             
+            metadata_path = video_dir / "embeddings" / "metadata.npy"
+            uses_keyframes = False
+            if metadata_path.exists():
+                metadata = np.load(metadata_path, allow_pickle=True).item()
+                uses_keyframes = metadata.get('uses_keyframes', False)
+            
             all_embeddings.append(embs)
             video_metadata.append({
                 'video_name': video_dir.name,
                 'num_frames': len(embs),
-                'start_idx': sum(len(e) for e in all_embeddings[:-1])
+                'start_idx': sum(len(e) for e in all_embeddings[:-1]),
+                'uses_keyframes': uses_keyframes
             })
             
-            print(f"  {video_dir.name}: {len(embs)} frames")
+            print(f"  {video_dir.name}: {len(embs)} {'keyframes' if uses_keyframes else 'frames'}")
         
         if not all_embeddings:
             raise ValueError(f"No embeddings found in {self.data_dir}")
@@ -83,9 +90,8 @@ class FAISSIndex:
         query_vec = text_features.cpu().numpy().astype("float32")
         query_vec = query_vec / (np.linalg.norm(query_vec, axis=1, keepdims=True) + 1e-8)
         
-        k = top_k if top_k else self.index.ntotal
+        k = top_k or self.index.ntotal
         
-        # Measure FAISS search latency
         start_time = time.perf_counter()
         similarities, indices = self.index.search(query_vec, k)
         faiss_latency_ms = (time.perf_counter() - start_time) * 1000

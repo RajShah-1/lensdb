@@ -1,7 +1,7 @@
 from pathlib import Path
 import os, numpy as np, cv2
 from src.keyframe.keyframe_selectors import EmbeddingNoveltyKF, SSIMFlowKF, WindowKCenterKF
-from src.pipeline.kf_eval import evaluate_selector, summarize_to_csv
+from src.keyframe.kf_eval import evaluate_selector, summarize_to_csv
 
 def load_frames(frames_dir: str | None):
     if not frames_dir: return None

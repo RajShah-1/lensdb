@@ -30,30 +30,58 @@ class SemanticQueryPipeline:
         print(f"Loaded model from {checkpoint_path}")
         print(f"Device: {self.device}, Parameters: {self.model.num_parameters():,}")
     
+    def _load_keyframe_metadata(self, video_name: str):
+        embeddings_dir = self.data_dir / video_name / "embeddings"
+        metadata_path = embeddings_dir / "metadata.npy"
+        
+        if not metadata_path.exists():
+            return None, None, None
+            
+        metadata = np.load(metadata_path, allow_pickle=True).item()
+        if not metadata.get('uses_keyframes', False):
+            return None, None, None
+            
+        keyframe_indices = np.load(embeddings_dir / "keyframe_indices.npy")
+        keyframe_mapping = np.load(embeddings_dir / "keyframe_mapping.npy", allow_pickle=True).item()
+        return keyframe_indices, keyframe_mapping, metadata
+    
+    def _expand_keyframes_to_frames(self, video_name: str, keyframe_results: list):
+        keyframe_indices, keyframe_mapping, _ = self._load_keyframe_metadata(video_name)
+        
+        if keyframe_mapping is None:
+            return keyframe_results
+        
+        frame_results = []
+        for kf_result in keyframe_results:
+            kf_idx = kf_result['frame_idx']
+            actual_kf_idx = keyframe_indices[kf_idx]
+            represented_frames = keyframe_mapping.get(actual_kf_idx, [actual_kf_idx])
+            
+            for frame_idx in represented_frames:
+                frame_results.append({
+                    'frame_idx': frame_idx,
+                    'similarity': kf_result['similarity'],
+                    'predicted_count': kf_result['predicted_count'],
+                    'from_keyframe': actual_kf_idx
+                })
+        
+        frame_results.sort(key=lambda x: x['frame_idx'])
+        return frame_results
+    
     def query(self, text_query: str, count_predicate=None):
-        """
-        Run semantic query and return matching frames.
-        
-        Args:
-            text_query: Text description to search for (e.g., "car", "person")
-            count_predicate: Optional function to filter by predicted count
-        
-        Returns:
-            Dictionary of results by video name
-        """
         print(f"\n{'='*60}")
-        print(f"SEMANTIC QUERY: '{text_query}'")
+        print(f"QUERY: '{text_query}'")
         print(f"{'='*60}")
         
-        print(f"\n[Stage 1] FAISS Prefilter")
+        print(f"\n[1/2] FAISS Prefilter")
         candidates, _ = self.index.query_text(text_query, top_k=self.top_k, 
                                              similarity_threshold=self.threshold)
         
         if not candidates:
-            print("No frames passed prefilter")
+            print("No candidates found")
             return {}
         
-        print(f"\n[Stage 2] Count Prediction")
+        print(f"\n[2/2] Count Prediction")
         results = {}
         
         for video_name, frames_data in candidates.items():
@@ -72,14 +100,14 @@ class SemanticQueryPipeline:
                 pred_count = float(predictions[i])
                 pred_count_rounded = round(pred_count)
                 
-                if count_predicate and not count_predicate(pred_count_rounded):
-                    continue
-                
-                video_results.append({
-                    'frame_idx': frame_data['frame_idx'],
-                    'similarity': frame_data['similarity'],
-                    'predicted_count': pred_count_rounded
-                })
+                if not count_predicate or count_predicate(pred_count_rounded):
+                    video_results.append({
+                        'frame_idx': frame_data['frame_idx'],
+                        'similarity': frame_data['similarity'],
+                        'predicted_count': pred_count_rounded
+                    })
+            
+            video_results = self._expand_keyframes_to_frames(video_name, video_results)
             
             if video_results:
                 results[video_name] = {
@@ -111,11 +139,6 @@ class SemanticQueryPipeline:
     
     def query_with_metrics(self, text_query: str, count_threshold: int,
                           eval_videos: list, data_dir: str):
-        """
-        Query with detailed metrics tracking for ablation study.
-        Returns metrics at FAISS and MLP stages separately.
-        """
-        # Load ground truth for eval videos
         def load_ground_truth(video_name: str, target: str):
             counts_file = Path(data_dir) / video_name / "counts.csv"
             counts = {}
@@ -123,22 +146,14 @@ class SemanticQueryPipeline:
                 reader = csv.DictReader(f)
                 for row in reader:
                     frame_id = int(row['frame_id'])
-                    if target == "car":
-                        counts[frame_id] = int(row['car_count'])
-                    else:
-                        counts[frame_id] = int(row['people_count'])
+                    counts[frame_id] = int(row['car_count' if target == "car" else 'people_count'])
             return counts
         
-        # Stage 1: FAISS lookup with timing
         candidates, faiss_latency_ms = self.index.query_text(
-            text_query, 
-            top_k=self.top_k,
-            similarity_threshold=self.threshold
+            text_query, top_k=self.top_k, similarity_threshold=self.threshold
         )
         
-        # Calculate FAISS stage metrics
-        faiss_tp, faiss_fp, faiss_fn = 0, 0, 0
-        faiss_retrieved_count = 0
+        faiss_tp, faiss_fp, faiss_fn, faiss_retrieved_count = 0, 0, 0, 0
         
         for video_name in eval_videos:
             gt_counts = load_ground_truth(video_name, text_query)
@@ -154,11 +169,13 @@ class SemanticQueryPipeline:
             faiss_fp += len(retrieved_frames - gt_positive)
             faiss_fn += len(gt_positive - retrieved_frames)
         
-        faiss_precision = faiss_tp / (faiss_tp + faiss_fp) if (faiss_tp + faiss_fp) > 0 else 0.0
-        faiss_recall = faiss_tp / (faiss_tp + faiss_fn) if (faiss_tp + faiss_fn) > 0 else 0.0
-        faiss_f1 = 2 * faiss_precision * faiss_recall / (faiss_precision + faiss_recall) if (faiss_precision + faiss_recall) > 0 else 0.0
+        faiss_denom_p = faiss_tp + faiss_fp
+        faiss_denom_r = faiss_tp + faiss_fn
+        faiss_precision = faiss_tp / faiss_denom_p if faiss_denom_p > 0 else 0.0
+        faiss_recall = faiss_tp / faiss_denom_r if faiss_denom_r > 0 else 0.0
+        faiss_denom_f1 = faiss_precision + faiss_recall
+        faiss_f1 = 2 * faiss_precision * faiss_recall / faiss_denom_f1 if faiss_denom_f1 > 0 else 0.0
         
-        # Stage 2: MLP prediction with timing
         mlp_start = time.perf_counter()
         results = {}
         
@@ -175,15 +192,15 @@ class SemanticQueryPipeline:
             
             video_results = []
             for i, frame_data in enumerate(frames_data):
-                pred_count = float(predictions[i])
-                pred_count_rounded = round(pred_count)
-                
+                pred_count_rounded = round(float(predictions[i]))
                 if pred_count_rounded >= count_threshold:
                     video_results.append({
                         'frame_idx': frame_data['frame_idx'],
                         'similarity': frame_data['similarity'],
                         'predicted_count': pred_count_rounded
                     })
+            
+            video_results = self._expand_keyframes_to_frames(video_name, video_results)
             
             if video_results:
                 results[video_name] = {
@@ -194,9 +211,7 @@ class SemanticQueryPipeline:
         
         mlp_latency_ms = (time.perf_counter() - mlp_start) * 1000
         
-        # Calculate MLP stage metrics (final pipeline)
-        mlp_tp, mlp_fp, mlp_fn = 0, 0, 0
-        mlp_retrieved_count = 0
+        mlp_tp, mlp_fp, mlp_fn, mlp_retrieved_count = 0, 0, 0, 0
         
         for video_name in eval_videos:
             gt_counts = load_ground_truth(video_name, text_query)
@@ -212,9 +227,12 @@ class SemanticQueryPipeline:
             mlp_fp += len(retrieved_frames - gt_positive)
             mlp_fn += len(gt_positive - retrieved_frames)
         
-        mlp_precision = mlp_tp / (mlp_tp + mlp_fp) if (mlp_tp + mlp_fp) > 0 else 0.0
-        mlp_recall = mlp_tp / (mlp_tp + mlp_fn) if (mlp_tp + mlp_fn) > 0 else 0.0
-        mlp_f1 = 2 * mlp_precision * mlp_recall / (mlp_precision + mlp_recall) if (mlp_precision + mlp_recall) > 0 else 0.0
+        mlp_denom_p = mlp_tp + mlp_fp
+        mlp_denom_r = mlp_tp + mlp_fn
+        mlp_precision = mlp_tp / mlp_denom_p if mlp_denom_p > 0 else 0.0
+        mlp_recall = mlp_tp / mlp_denom_r if mlp_denom_r > 0 else 0.0
+        mlp_denom_f1 = mlp_precision + mlp_recall
+        mlp_f1 = 2 * mlp_precision * mlp_recall / mlp_denom_f1 if mlp_denom_f1 > 0 else 0.0
         
         return {
             'faiss_latency_ms': faiss_latency_ms,
