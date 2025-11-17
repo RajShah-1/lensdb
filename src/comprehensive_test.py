@@ -219,7 +219,7 @@ def run_comprehensive_tests(
         Dictionary containing all test results
     """
     if test_keyframes and keyframe_selectors is None:
-        keyframe_selectors = ['emb_novelty']
+        keyframe_selectors = ['framediff']
     elif not test_keyframes:
         keyframe_selectors = []
     
@@ -391,8 +391,8 @@ if __name__ == "__main__":
         yolo_model="yolo11m",
         output_file="results/comprehensive_test_keyframes.json",
         test_keyframes=True,
-        keyframe_selectors=['emb_novelty'],
-        keyframe_params={'emb_novelty': {'k_mad': 2.0, 'min_spacing': 6}},
+        keyframe_selectors=['framediff'],
+        keyframe_params={'framediff': {'k_mad': 2.5, 'min_spacing': 6}},
         force_regenerate_keyframes=False,
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
     )

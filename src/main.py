@@ -3,16 +3,15 @@ from pathlib import Path
 
 import numpy as np
 
-from src.pipeline.keyframe_pipeline import KeyframePipeline
 from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
 from src.models.model_configs import MEDIUM, SMALL, LARGE, LARGE3
 from src.pipeline.detection_pipeline import DetectionPipeline
+from src.pipeline.embedding_pipeline import generate_embeddings, get_preselector
 from src.detectors.object_detector import ObjectDetector
 from src.training.train_pipeline import finetune_on_virat, pretrain_on_coco
 from src.indexing.faiss_index import FAISSIndex
 from src.query.semantic_query import SemanticQueryPipeline
 from src.baseline import evaluate_baseline_yolo
-from src.keyframe.keyframe_selectors import EmbeddingNoveltyKF, SSIMFlowKF, WindowKCenterKF
 from src.benchmark_functions import benchmark_baseline, benchmark_embds, benchmark_with_kf
 from src.comprehensive_test import run_comprehensive_tests
 
@@ -35,26 +34,25 @@ def run_detection_on_dir(videos_dir: str, model_name: str, annotated: bool):
         pipeline = DetectionPipeline(str(vid), detector, out_dir=out_dir)
         pipeline.run(save=True)
 
-def gen_embeddings_for_dir(videos_dir: str, keyframe_selector=None, embedder_config=None):
+def gen_embeddings_for_dir(videos_dir: str, data_dir: str = "data/VIRAT",
+                          method: str = None, method_params: dict = None):
+    """Generate embeddings for videos (with optional keyframe preselection)."""
     videos = sorted(Path(videos_dir).glob("*.mp4"))
     print(f"Found {len(videos)} videos in {videos_dir}")
     
-    embedder_config = embedder_config or CLIP_VIT_B32
-    keyframe_selector = keyframe_selector or EmbeddingNoveltyKF(
-        k_mad=3.0, min_spacing=12, diversity_delta=0.12, ema_alpha=0.2
-    )
-    
-    embedder = CLIPEmbedder(embedder_config)
+    preselector = get_preselector(method, **(method_params or {})) if method else None
     
     for vid in videos:
-        print(f"\n{'='*70}")
         print(f"Processing {vid.name}")
-        print(f"{'='*70}")
-        out_dir = Path("data/VIRAT") / vid.stem
+        out_dir = Path(data_dir) / vid.stem
         out_dir.mkdir(parents=True, exist_ok=True)
         
-        pipeline = KeyframePipeline(str(vid), embedder, keyframe_selector, out_dir=out_dir)
-        pipeline.run(save=True)
+        generate_embeddings(
+            video_path=str(vid),
+            out_dir=str(out_dir),
+            preselector=preselector,
+            embedder_config=CLIP_VIT_B32
+        )
 
 def build_index(data_dir="data/VIRAT"):
     index = FAISSIndex(data_dir)
@@ -175,12 +173,12 @@ def run_embedding_benchmark():
     return results
 
 
-def run_keyframe_benchmark(method="emb_novelty"):
+def run_keyframe_benchmark(method="framediff"):
     """
     Run keyframe-based pipeline benchmark.
     
     Args:
-        method: Keyframe selector ('emb_novelty', 'ssim_flow', 'kcenter')
+        method: Preselector method ('framediff', 'ssim', 'mog2', 'flow')
     """
     results = benchmark_with_kf(
         kf_method=method,
@@ -191,7 +189,7 @@ def run_keyframe_benchmark(method="emb_novelty"):
         similarity_threshold=0.2,
         num_videos=5,
         thresholds=[0, 1, 2],
-        kf_params={'k_mad': 2.0, 'min_spacing': 6},
+        kf_params={'k_mad': 2.5, 'min_spacing': 6},
         force_regenerate=False,
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
     )
@@ -214,8 +212,12 @@ def run_full_comparison():
         yolo_model="yolo11m",
         output_file="results/comprehensive_test_results.json",
         test_keyframes=True,
-        keyframe_selectors=['emb_novelty'],
-        keyframe_params={'emb_novelty': {'k_mad': 2.0, 'min_spacing': 6}},
+        keyframe_selectors=['framediff', 'ssim', 'flow'],
+        keyframe_params={
+            'framediff': {'k_mad': 2.5, 'min_spacing': 6},
+            'ssim': {'k_mad': 2.5, 'min_spacing': 6},
+            'flow': {'k_mad': 2.5, 'min_spacing': 6}
+        },
         force_regenerate_keyframes=False,
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
     )
@@ -224,14 +226,6 @@ def run_full_comparison():
 
 if __name__ == "__main__":
     run_keyframe_benchmark()
-    # video_path = "videos/demo.mp4"
-    # out_dir = "data/demo"
-    
-    # embedder = CLIPEmbedder(CLIP_VIT_B32)
-    # keyframe_selector = SSIMFlowKF()
-    
-    # pipeline = KeyframePipeline(video_path, embedder, keyframe_selector, out_dir=out_dir)
-    # results = pipeline.run(save=True)
 
 
 
