@@ -1,7 +1,7 @@
 """Benchmark functions for testing different pipeline configurations."""
 
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 
 from src.embeddings.embedder import CLIPEmbedder
@@ -80,6 +80,91 @@ def benchmark_embds(data_dir: str, checkpoint_path: str, model_config, target: s
     return pipeline_results
 
 
+def _process_video_worker(args):
+    """
+    Worker function for multiprocessing. 
+    Creates embedder fresh in each process to avoid CUDA context issues.
+    
+    Args: (video_dir_str, video_name, videos_source_dir, kf_method, kf_params,
+           embedder_config, target_fps, force_regenerate, save_keyframes, worker_id, log_file)
+    """
+    import sys
+    import traceback
+    import os as os_module
+    
+    try:
+        (video_dir_str, video_name, videos_source_dir, kf_method, kf_params,
+         embedder_config, target_fps, force_regenerate, save_keyframes, worker_id, log_file) = args
+        
+        # Redirect stdout/stderr to log file
+        if log_file:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            sys.stdout = open(log_file, 'w', buffering=1)
+            sys.stderr = sys.stdout
+        
+        from src.embeddings.embedder import CLIPEmbedder
+        
+        video_dir = Path(video_dir_str)
+        video_path = Path(videos_source_dir) / f"{video_name}.mp4"
+        
+        print(f"[Worker {worker_id}] Processing {video_name}, PID={os_module.getpid()}", flush=True)
+        
+        if not video_path.exists():
+            print(f"[Worker {worker_id}] WARN: Missing video file: {video_path}", flush=True)
+            return None
+        
+        # Create fresh embedder in this process with config dict
+        from src.embeddings.embedder import EmbedderConfig
+        cfg = EmbedderConfig(**embedder_config)
+        embedder = CLIPEmbedder(cfg)
+        preselector = get_preselector(kf_method, **kf_params)
+        
+        print(f"[Worker {worker_id}] Starting embedding generation", flush=True)
+        
+        # 1) Dense embeddings
+        generate_full_embeddings(
+            video_path=str(video_path),
+            out_dir=str(video_dir),
+            embedder=embedder,
+            target_fps=target_fps,
+            force=force_regenerate,
+        )
+        
+        print(f"[Worker {worker_id}] Starting keyframe selection", flush=True)
+        
+        # 2) Keyframe selection
+        metadata = select_keyframes_from_full(
+            video_path=str(video_path),
+            out_dir=str(video_dir),
+            preselector=preselector,
+            embedder=embedder,
+            target_fps=target_fps,
+            force=force_regenerate,
+            save_keyframes=save_keyframes,
+        )
+        
+        print(f"[Worker {worker_id}] Done: compression={metadata.get('compression_ratio', 'NA')}x", flush=True)
+        return metadata
+    
+    except Exception as e:
+        worker_id_str = args[9] if len(args) > 9 else 'unknown'
+        print(f"[Worker {worker_id_str}] ERROR: {e}", flush=True)
+        traceback.print_exc()
+        sys.stdout.flush()
+        return None
+    finally:
+        # Restore stdout/stderr if redirected
+        try:
+            if 'log_file' in locals() and log_file:
+                if hasattr(sys.stdout, 'close') and sys.stdout != sys.__stdout__:
+                    sys.stdout.close()
+                sys.stderr = sys.__stderr__
+                sys.stdout = sys.__stdout__
+        except:
+            pass
+
+
 def benchmark_with_kf(
     kf_method: str,
     kf_params: dict,
@@ -99,90 +184,109 @@ def benchmark_with_kf(
     """
     Benchmark keyframe-based pipeline, processing videos in parallel.
 
-    Per-video work (embedding + keyframe selection) is done in a thread pool.
-    FAISS index building and query evaluation are still done once at the end.
+    Per-video work (embedding + keyframe selection) is done in separate processes.
+    FAISS index building and query evaluation are done once at the end.
     """
     print(f"\n[Keyframe Pipeline: {kf_method}]")
     print(f"  Device: {embedder.device}")
     print(f"  Num workers: {num_workers}")
 
+    # Discover videos from source directory
+    videos_source_path = Path(videos_source_dir)
+    video_files = sorted([f for f in videos_source_path.glob("*.mp4")])[:num_videos]
+    
+    print(f"  Found {len(video_files)} videos in {videos_source_dir}")
+    
+    # Create data directories and prepare video info
     data_path = Path(data_dir)
-    video_dirs = sorted(
-        [
-            d for d in data_path.iterdir()
-            if d.is_dir() and not d.name.startswith("_")
-        ]
-    )[:num_videos]
-    eval_videos = [v.name for v in video_dirs]
+    data_path.mkdir(parents=True, exist_ok=True)
+    
+    video_dirs = []
+    for video_file in video_files:
+        video_name = video_file.stem  # filename without extension
+        video_dir = data_path / video_name
+        video_dir.mkdir(parents=True, exist_ok=True)
+        video_dirs.append(video_dir)
+    
+    eval_videos = [vd.name for vd in video_dirs]
 
     results = []
+    
+    # Create log directory with timestamp
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = Path("logs") / timestamp
+    log_dir.mkdir(parents=True, exist_ok=True)
+    print(f"  Logs will be saved to: {log_dir}")
 
-    def process_one_video(video_dir: Path):
-        """Worker: run full-embedding + keyframe selection on a single video."""
-
-        video_path = Path(videos_source_dir) / f"{video_dir.name}.mp4"
-        if not video_path.exists():
-            print(f"  [WARN] Missing video file for {video_dir.name}: {video_path}")
-            return None
-
-        # IMPORTANT: new preselector per video (stateful, not thread-safe to share)
-        preselector = get_preselector(kf_method, **kf_params)
-
-        print(f"  [{video_dir.name}] starting in worker")
-
-        # 1) Dense 1 FPS embeddings (will skip if already exist and force_regenerate=False)
-        generate_full_embeddings(
-            video_path=str(video_path),
-            out_dir=str(video_dir),
-            embedder=embedder,
-            target_fps=1.0,
-            force=force_regenerate,
-        )
-
-        # 2) Run keyframe selection from dense stream
-        metadata = select_keyframes_from_full(
-            video_path=str(video_path),
-            out_dir=str(video_dir),
-            preselector=preselector,
-            embedder=embedder,
-            target_fps=1.0,
-            force=force_regenerate,
-            save_keyframes=save_keyframes,
-        )
-
-        print(
-            f"  [{video_dir.name}] done: "
-            f"compression={metadata.get('compression_ratio', 'NA')}x"
-        )
-        return metadata
-
+    # Get the embedder config that was used (we need to pass it to workers)
+    # The main process has the embedder instance, we need to get the original config
+    from src.embeddings.embedder import CLIP_VIT_B32, MOBILE_CLIP_VIT_PATCH16
+    
+    # Determine which config was used based on embedder.name
+    embedder_cfg = CLIP_VIT_B32 if embedder.name == "clip" else MOBILE_CLIP_VIT_PATCH16
+    
+    # Serialize embedder config for workers
+    embedder_config_dict = {
+        'name': embedder_cfg.name,
+        'processor_name': embedder_cfg.processor_name,
+        'model_name': embedder_cfg.model_name,
+    }
+    
     # ---------- Parallel per-video section ----------
     if num_workers <= 1:
         # Fallback: sequential
-        for vd in video_dirs:
-            md = process_one_video(vd)
+        print(f"  Running sequentially (num_workers={num_workers})")
+        for idx, vd in enumerate(video_dirs, 1):
+            log_file = str(log_dir / f"worker_{idx}.log")
+            args = (str(vd), vd.name, videos_source_dir, kf_method, kf_params,
+                   embedder_config_dict, 1.0, force_regenerate, save_keyframes, idx, log_file)
+            md = _process_video_worker(args)
             if md is not None:
                 results.append(md)
     else:
-        with ThreadPoolExecutor(max_workers=num_workers) as ex:
-            future_to_vd = {
-                ex.submit(process_one_video, vd): vd.name for vd in video_dirs
-            }
-            for fut in as_completed(future_to_vd):
-                vd_name = future_to_vd[fut]
+        # Parallel processing
+        print(f"  Spawning {num_workers} worker processes...")
+        worker_args = [
+            (str(vd), vd.name, videos_source_dir, kf_method, kf_params,
+             embedder_config_dict, 1.0, force_regenerate, save_keyframes, idx, 
+             str(log_dir / f"worker_{idx}.log"))
+            for idx, vd in enumerate(video_dirs, 1)
+        ]
+        
+        print(f"  Submitting {len(worker_args)} videos to process pool")
+        
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = {executor.submit(_process_video_worker, args): args[1] 
+                      for args in worker_args}
+            
+            print(f"  Waiting for {len(futures)} tasks to complete...")
+            
+            completed = 0
+            for future in as_completed(futures):
+                video_name = futures[future]
+                completed += 1
                 try:
-                    md = fut.result()
+                    md = future.result()
                     if md is not None:
                         results.append(md)
+                        print(f"  [{completed}/{len(futures)}] Completed: {video_name}")
+                    else:
+                        print(f"  [{completed}/{len(futures)}] No result: {video_name}")
                 except Exception as e:
-                    print(f"  [ERROR] Video {vd_name} failed: {e}")
+                    print(f"  [{completed}/{len(futures)}] ERROR: {video_name} - {e}")
+                    import traceback
+                    traceback.print_exc()
 
     # ---------- Aggregate compression stats ----------
     if results:
         avg_comp = sum(r.get("compression_ratio", 1.0) for r in results) / len(results)
         print(f"  Avg compression: {avg_comp:.1f}x (over {len(results)} videos)")
+    else:
+        print(f"  [WARNING] No results collected from workers! Check if videos were processed.")
 
     # ---------- Build FAISS index over resulting embeddings ----------
+    print(f"\nBuilding FAISS index...")
     faiss_index = FAISSIndex(data_dir)
     faiss_index.build()
 
@@ -216,78 +320,3 @@ def benchmark_with_kf(
         "metadata": results,
         "pipeline_results": pipeline_results,
     }
-
-
-# def benchmark_with_kf(kf_method: str, kf_params: dict, data_dir: str, checkpoint_path: str,
-#                      model_config, target: str, similarity_threshold: float, num_videos: int,
-#                      thresholds: list[int], videos_source_dir: str, embedder: CLIPEmbedder,
-#                      force_regenerate: bool, save_keyframes: bool):
-#     """Benchmark keyframe-based pipeline."""
-#     print(f"\n[Keyframe Pipeline: {kf_method}]")
-#     print(f"  Device: {embedder.device}")
-    
-#     data_path = Path(data_dir)
-#     video_dirs = sorted([d for d in data_path.iterdir() 
-#                         if d.is_dir() and not d.name.startswith("_")])[:num_videos]
-#     eval_videos = [v.name for v in video_dirs]
-    
-#     preselector = get_preselector(kf_method, **kf_params)
-#     results = []
-    
-#     for video_dir in video_dirs:
-#         video_path = Path(videos_source_dir) / f"{video_dir.name}.mp4"
-#         if not video_path.exists():
-#             continue
-        
-#         print(f"  {video_dir.name}")
-        
-#         generate_full_embeddings(
-#             video_path=str(video_path),
-#             out_dir=str(video_dir),
-#             embedder=embedder,
-#             target_fps=1.0,
-#             force=force_regenerate
-#         )
-        
-#         metadata = select_keyframes_from_full(
-#             video_path=str(video_path),
-#             out_dir=str(video_dir),
-#             preselector=preselector,
-#             embedder=embedder,
-#             target_fps=1.0,
-#             force=force_regenerate,
-#             save_keyframes=save_keyframes
-#         )
-#         results.append(metadata)
-    
-#     if results:
-#         avg_comp = sum(r['compression_ratio'] for r in results) / len(results)
-#         print(f"  Avg compression: {avg_comp:.1f}x")
-    
-#     faiss_index = FAISSIndex(data_dir)
-#     faiss_index.build()
-    
-#     pipeline = SemanticQueryPipeline(
-#         data_dir=data_dir,
-#         checkpoint_path=checkpoint_path,
-#         model_config=model_config,
-#         threshold=similarity_threshold
-#     )
-    
-#     pipeline_results = {}
-    
-#     for threshold in thresholds:
-#         metrics = pipeline.query_with_metrics(
-#             text_query=target,
-#             count_threshold=threshold,
-#             eval_videos=eval_videos,
-#             data_dir=data_dir
-#         )
-#         pipeline_results[threshold] = metrics
-#         print(f"  T>={threshold}: R={metrics['mlp_recall']:.3f}, F1={metrics['mlp_f1']:.3f}, "
-#               f"Lat={metrics['total_latency_ms']:.1f}ms")
-    
-#     return {
-#         'metadata': results,
-#         'pipeline_results': pipeline_results
-#     }

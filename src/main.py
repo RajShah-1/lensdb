@@ -1,5 +1,9 @@
 """Main entry points for LensDB pipeline."""
 
+import multiprocessing
+# MUST set spawn before any CUDA initialization for multiprocessing to work
+multiprocessing.set_start_method('spawn', force=True)
+
 from pathlib import Path
 from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
 from src.models.model_configs import LARGE3
@@ -49,7 +53,8 @@ def run_keyframe_benchmark():
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         embedder=embedder,
         force_regenerate=False,
-        save_keyframes=True
+        save_keyframes=True,
+        num_workers=4
     )
 
 
