@@ -84,4 +84,5 @@ def run_full_comparison():
 
 
 if __name__ == "__main__":
-    run_keyframe_benchmark()
+    # run_keyframe_benchmark()
+    run_full_comparison()

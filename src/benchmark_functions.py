@@ -179,7 +179,7 @@ def benchmark_with_kf(
     embedder: CLIPEmbedder,
     force_regenerate: bool,
     save_keyframes: bool,
-    num_workers: int,
+    num_workers: int = 1,
 ):
     """
     Benchmark keyframe-based pipeline, processing videos in parallel.
