@@ -1,6 +1,7 @@
 """Main entry points for LensDB pipeline."""
 
 import multiprocessing
+import time
 # MUST set spawn before any CUDA initialization for multiprocessing to work
 multiprocessing.set_start_method('spawn', force=True)
 
@@ -84,5 +85,6 @@ def run_full_comparison():
 
 
 if __name__ == "__main__":
-    # run_keyframe_benchmark()
+    print("Running full comparison...", time.strftime("%Y-%m-%d %H:%M:%S"))
     run_full_comparison()
+    print("Full comparison done!", time.strftime("%Y-%m-%d %H:%M:%S"))
