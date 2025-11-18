@@ -6,6 +6,7 @@ import cv2
 
 from src.embeddings.embedder import CLIPEmbedder
 from src.keyframe.preselect_base import BasePreselector
+from src.video.video_reader import iter_video_frames
 
 BATCH_SIZE = 128
 
@@ -26,45 +27,26 @@ def generate_full_embeddings(video_path: str, out_dir: str, embedder: CLIPEmbedd
         print(f"  Full embeddings exist, skipping")
         return
     
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise RuntimeError(f"Cannot open {video_path}")
-    
-    native_fps = cap.get(cv2.CAP_PROP_FPS)
-    if native_fps <= 0 or np.isnan(native_fps):
-        native_fps = 30.0
-    
-    stride = max(1, int(round(native_fps / target_fps)))
-    
-    sampled_to_orig = []
+    # Stream frames with caching - memory efficient
     embeddings = []
+    sampled_to_orig = []
     batch = []
-    orig_idx = 0
     
     print(f"  Embedding frames in batches of {BATCH_SIZE}...")
     
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    for frame, frame_idx in iter_video_frames(video_path, out_dir, target_fps):
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        batch.append(rgb_frame)
+        sampled_to_orig.append(frame_idx)
         
-        if orig_idx % stride == 0:
-            batch.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            sampled_to_orig.append(orig_idx)
-            
-            if len(batch) == BATCH_SIZE:
-                print(f"  Embedding batch of {len(batch)} frames...")
-                embs = embedder.embed(batch)
-                embeddings.extend(embs)
-                batch = []
-        
-        orig_idx += 1
+        if len(batch) == BATCH_SIZE:
+            embs = embedder.embed(batch)
+            embeddings.extend(embs)
+            batch = []
     
     if batch:
         embs = embedder.embed(batch)
         embeddings.extend(embs)
-    
-    cap.release()
     
     embeddings = np.array(embeddings)
     
@@ -100,35 +82,16 @@ def select_keyframes_from_full(video_path: str, out_dir: str, preselector: BaseP
     full_embeddings = np.load(full_embds_file)
     total_frames = len(full_embeddings)
     
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise RuntimeError(f"Cannot open {video_path}")
-    
-    native_fps = cap.get(cv2.CAP_PROP_FPS)
-    if native_fps <= 0 or np.isnan(native_fps):
-        native_fps = 30.0
-    
-    stride = max(1, int(round(native_fps / target_fps)))
-    
+    # Stream frames with caching - memory efficient
     preselector.start()
-    orig_idx = 0
-    samp_idx = 0
-    sampled_frames = [] if save_keyframes else None
     
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        if orig_idx % stride == 0:
-            preselector.process(frame, samp_idx)
-            if save_keyframes:
-                sampled_frames.append(frame)
-            samp_idx += 1
-        
-        orig_idx += 1
+    # Store frames only if saving keyframes
+    frames_list = [] if save_keyframes else None
     
-    cap.release()
+    for samp_idx, (frame, _) in enumerate(iter_video_frames(video_path, out_dir, target_fps)):
+        preselector.process(frame, samp_idx)
+        if save_keyframes:
+            frames_list.append(frame)
     
     result = preselector.finalize()
     keyframe_indices = result.indices
@@ -140,10 +103,21 @@ def select_keyframes_from_full(video_path: str, out_dir: str, preselector: BaseP
         
         sampled_to_orig = np.load(embeddings_dir / "sampled_to_orig.npy")
         
+        # Get native FPS for timestamps
+        native_fps = 30.0
+        cap = cv2.VideoCapture(video_path)
+        if cap.isOpened():
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps > 0 and not np.isnan(fps):
+                native_fps = fps
+            else:
+                print(f"  [WARNING] FPS not found for {video_path}")
+            cap.release()
+        
         with open(keyframes_dir / "timestamps.txt", 'w') as f:
             f.write("frame_idx,orig_frame,timestamp_sec\n")
             for kf_idx in keyframe_indices:
-                frame = sampled_frames[kf_idx]
+                frame = frames_list[kf_idx]
                 cv2.imwrite(str(keyframes_dir / f"frame_{kf_idx:06d}.jpg"), frame)
                 orig_frame = sampled_to_orig[kf_idx]
                 timestamp = orig_frame / native_fps

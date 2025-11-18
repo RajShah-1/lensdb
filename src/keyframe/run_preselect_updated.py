@@ -47,6 +47,7 @@ def run_preselector(
     native_fps = cap.get(cv2.CAP_PROP_FPS)
     if native_fps <= 0 or np.isnan(native_fps):
         # Fallback if FPS is not set properly
+        print(f"  [WARNING] FPS not found for {video_path}")
         native_fps = 30.0
 
     # stride in original frames to get approx target_fps

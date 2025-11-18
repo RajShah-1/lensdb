@@ -54,7 +54,7 @@ def run_keyframe_benchmark():
         embedder=embedder,
         force_regenerate=False,
         save_keyframes=True,
-        num_workers=4
+        num_workers=1
     )
 
 
