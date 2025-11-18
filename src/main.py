@@ -48,7 +48,7 @@ def run_keyframe_benchmark():
         thresholds=[0, 1, 2],
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         embedder=embedder,
-        force_regenerate=True,
+        force_regenerate=False,
         save_keyframes=False
     )
 
