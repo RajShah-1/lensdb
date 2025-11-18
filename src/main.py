@@ -38,7 +38,7 @@ def run_keyframe_benchmark():
     
     return benchmark_with_kf(
         kf_method="framediff",
-        kf_params={'k_mad': 2.5, 'min_spacing': 6},
+        kf_params={'k_mad': 1.0, 'min_spacing': 2},
         data_dir="data/VIRAT",
         checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
         model_config=LARGE3,
@@ -49,7 +49,7 @@ def run_keyframe_benchmark():
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         embedder=embedder,
         force_regenerate=False,
-        save_keyframes=False
+        save_keyframes=True
     )
 
 

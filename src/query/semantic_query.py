@@ -218,6 +218,8 @@ class SemanticQueryPipeline:
         mlp_latency_ms = (time.perf_counter() - mlp_start) * 1000
         
         mlp_tp, mlp_fp, mlp_fn, mlp_retrieved_count = 0, 0, 0, 0
+        positive_kf_indices = []
+        negative_kf_indices = []
         
         for video_name in eval_videos:
             gt_counts = load_ground_truth(video_name, text_query)
@@ -227,6 +229,13 @@ class SemanticQueryPipeline:
                 retrieved_frames = {f['frame_idx'] for f in results[video_name]['frames']}
             else:
                 retrieved_frames = set()
+            
+            if video_name in candidates:
+                candidate_kf_indices = [f['frame_idx'] for f in candidates[video_name]]
+                result_kf_indices = [f['frame_idx'] for f in results.get(video_name, {}).get('frames', [])] if video_name in results else []
+                
+                positive_kf_indices.extend(result_kf_indices)
+                negative_kf_indices.extend([idx for idx in candidate_kf_indices if idx not in result_kf_indices])
             
             mlp_retrieved_count += len(retrieved_frames)
             mlp_tp += len(gt_positive & retrieved_frames)
@@ -252,4 +261,9 @@ class SemanticQueryPipeline:
             'mlp_recall': mlp_recall,
             'mlp_f1': mlp_f1,
             'mlp_retrieved': mlp_retrieved_count,
+            'mlp_tp': mlp_tp,
+            'mlp_fp': mlp_fp,
+            'mlp_fn': mlp_fn,
+            'positive_kf_indices': positive_kf_indices,
+            'negative_kf_indices': negative_kf_indices,
         }

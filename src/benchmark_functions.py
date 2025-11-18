@@ -75,6 +75,7 @@ def benchmark_embds(data_dir: str, checkpoint_path: str, model_config, target: s
         pipeline_results[threshold] = metrics
         print(f"  T>={threshold}: R={metrics['mlp_recall']:.3f}, F1={metrics['mlp_f1']:.3f}, "
               f"Lat={metrics['total_latency_ms']:.1f}ms")
+        print(f"    TP={metrics['mlp_tp']}, FP={metrics['mlp_fp']}, FN={metrics['mlp_fn']}")
     
     return pipeline_results
 
@@ -203,13 +204,14 @@ def benchmark_with_kf(
             data_dir=data_dir,
         )
         pipeline_results[threshold] = metrics
-        print(
-            f"  T>={threshold}: "
-            f"R={metrics['mlp_recall']:.3f}, "
-            f"F1={metrics['mlp_f1']:.3f}, "
-            f"Lat={metrics['total_latency_ms']:.1f}ms"
-        )
-
+        print(f"  T>={threshold}: R={metrics['mlp_recall']:.3f}, F1={metrics['mlp_f1']:.3f}, "
+              f"Lat={metrics['total_latency_ms']:.1f}ms")
+        print(f"    TP={metrics['mlp_tp']}, FP={metrics['mlp_fp']}, FN={metrics['mlp_fn']}")
+        if metrics.get('positive_kf_indices'):
+            print(f"    Positive Frames: {', '.join(map(str, metrics['positive_kf_indices']))}")
+        if metrics.get('negative_kf_indices'):
+            print(f"    Negative Frames: {', '.join(map(str, metrics['negative_kf_indices']))}")
+    
     return {
         "metadata": results,
         "pipeline_results": pipeline_results,
