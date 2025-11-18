@@ -48,7 +48,8 @@ def run_keyframe_benchmark():
         thresholds=[0, 1, 2],
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         embedder=embedder,
-        force_regenerate=True
+        force_regenerate=True,
+        save_keyframes=False
     )
 
 
@@ -66,13 +67,14 @@ def run_full_comparison():
         output_file="results/comprehensive_test_results.json",
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         test_keyframes=True,
+        force_regenerate_keyframes=False,
+        save_keyframes=False,
         keyframe_selectors=['framediff', 'ssim', 'flow'],
         keyframe_params={
             'framediff': {'k_mad': 2.5, 'min_spacing': 6},
             'ssim': {'k_mad': 2.5, 'min_spacing': 6},
             'flow': {'k_mad': 2.5, 'min_spacing': 6}
-        },
-        force_regenerate_keyframes=False
+        }
     )
 
 

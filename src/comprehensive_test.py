@@ -184,10 +184,11 @@ def run_comprehensive_tests(
     yolo_model: str,
     output_file: str,
     videos_source_dir: str,
-    test_keyframes: bool = True,
+    test_keyframes: bool,
+    force_regenerate_keyframes: bool,
+    save_keyframes: bool,
     keyframe_selectors: list[str] = None,
-    keyframe_params: dict = None,
-    force_regenerate_keyframes: bool = False
+    keyframe_params: dict = None
 ):
     """Run comprehensive tests."""
     if test_keyframes and keyframe_selectors is None:
@@ -256,7 +257,8 @@ def run_comprehensive_tests(
                 thresholds=thresholds,
                 videos_source_dir=videos_source_dir,
                 embedder=embedder,
-                force_regenerate=force_regenerate_keyframes
+                force_regenerate=force_regenerate_keyframes,
+                save_keyframes=save_keyframes
             )
     
     all_results['baseline_results'] = benchmark_baseline(
@@ -346,7 +348,8 @@ if __name__ == "__main__":
         output_file="results/comprehensive_test_keyframes.json",
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         test_keyframes=True,
+        force_regenerate_keyframes=False,
+        save_keyframes=False,
         keyframe_selectors=['framediff'],
-        keyframe_params={'framediff': {'k_mad': 2.5, 'min_spacing': 6}},
-        force_regenerate_keyframes=False
+        keyframe_params={'framediff': {'k_mad': 2.5, 'min_spacing': 6}}
     )

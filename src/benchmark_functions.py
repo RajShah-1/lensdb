@@ -81,7 +81,7 @@ def benchmark_embds(data_dir: str, checkpoint_path: str, model_config, target: s
 def benchmark_with_kf(kf_method: str, kf_params: dict, data_dir: str, checkpoint_path: str,
                      model_config, target: str, similarity_threshold: float, num_videos: int,
                      thresholds: list[int], videos_source_dir: str, embedder: CLIPEmbedder,
-                     force_regenerate: bool):
+                     force_regenerate: bool, save_keyframes: bool):
     """Benchmark keyframe-based pipeline."""
     print(f"\n[Keyframe Pipeline: {kf_method}]")
     print(f"  Device: {embedder.device}")
@@ -105,6 +105,7 @@ def benchmark_with_kf(kf_method: str, kf_params: dict, data_dir: str, checkpoint
             video_path=str(video_path),
             out_dir=str(video_dir),
             embedder=embedder,
+            target_fps=1.0,
             force=force_regenerate
         )
         
@@ -113,7 +114,9 @@ def benchmark_with_kf(kf_method: str, kf_params: dict, data_dir: str, checkpoint
             out_dir=str(video_dir),
             preselector=preselector,
             embedder=embedder,
-            force=force_regenerate
+            target_fps=1.0,
+            force=force_regenerate,
+            save_keyframes=save_keyframes
         )
         results.append(metadata)
     
