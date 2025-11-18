@@ -64,6 +64,7 @@ def run_full_comparison():
         thresholds=[0, 1, 2, 3, 4, 5],
         yolo_model="yolo11m",
         output_file="results/comprehensive_test_results.json",
+        videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         test_keyframes=True,
         keyframe_selectors=['framediff', 'ssim', 'flow'],
         keyframe_params={
@@ -71,8 +72,7 @@ def run_full_comparison():
             'ssim': {'k_mad': 2.5, 'min_spacing': 6},
             'flow': {'k_mad': 2.5, 'min_spacing': 6}
         },
-        force_regenerate_keyframes=False,
-        videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
+        force_regenerate_keyframes=False
     )
 
 

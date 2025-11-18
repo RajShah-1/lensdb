@@ -36,9 +36,12 @@ def generate_full_embeddings(video_path: str, out_dir: str, embedder: CLIPEmbedd
     
     stride = max(1, int(round(native_fps / target_fps)))
     
-    sampled_frames = []
     sampled_to_orig = []
+    embeddings = []
+    batch = []
     orig_idx = 0
+    
+    print(f"  Embedding frames in batches of {BATCH_SIZE}...")
     
     while True:
         ret, frame = cap.read()
@@ -46,25 +49,28 @@ def generate_full_embeddings(video_path: str, out_dir: str, embedder: CLIPEmbedd
             break
         
         if orig_idx % stride == 0:
-            sampled_frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            batch.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             sampled_to_orig.append(orig_idx)
+            
+            if len(batch) == BATCH_SIZE:
+                print(f"  Embedding batch of {len(batch)} frames...")
+                embs = embedder.embed(batch)
+                embeddings.extend(embs)
+                batch = []
         
         orig_idx += 1
     
-    cap.release()
-    
-    print(f"  Embedding {len(sampled_frames)} frames...")
-    embeddings = []
-    for i in range(0, len(sampled_frames), BATCH_SIZE):
-        batch = sampled_frames[i:i+BATCH_SIZE]
+    if batch:
         embs = embedder.embed(batch)
         embeddings.extend(embs)
+    
+    cap.release()
     
     embeddings = np.array(embeddings)
     
     np.save(full_embds_file, embeddings)
     np.save(embeddings_dir / "sampled_to_orig.npy", np.array(sampled_to_orig))
-    print(f"  Saved {len(embeddings)} embeddings")
+    print(f"  Saved {len(embeddings)} embeddings to {full_embds_file.name}")
 
 
 def select_keyframes_from_full(video_path: str, out_dir: str, preselector: BasePreselector,
