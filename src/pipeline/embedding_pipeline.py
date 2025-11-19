@@ -28,12 +28,12 @@ def generate_full_embeddings(video_path: str, out_dir: str, embedder: CLIPEmbedd
         return
     
     # Stream frames with caching - memory efficient
-    embeddings = []
+    embedding_batches = []
     sampled_to_orig = []
     batch = []
     
     print(f"  Embedding frames in batches of {BATCH_SIZE}...")
-    
+
     for frame, frame_idx in iter_video_frames(video_path, out_dir, target_fps):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         batch.append(rgb_frame)
@@ -41,14 +41,14 @@ def generate_full_embeddings(video_path: str, out_dir: str, embedder: CLIPEmbedd
         
         if len(batch) == BATCH_SIZE:
             embs = embedder.embed(batch)
-            embeddings.extend(embs)
+            embedding_batches.append(embs)
             batch = []
     
     if batch:
         embs = embedder.embed(batch)
-        embeddings.extend(embs)
+        embedding_batches.append(embs)
     
-    embeddings = np.array(embeddings)
+    embeddings = np.vstack(embedding_batches)
     
     np.save(full_embds_file, embeddings)
     np.save(embeddings_dir / "sampled_to_orig.npy", np.array(sampled_to_orig))

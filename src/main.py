@@ -11,6 +11,7 @@ from src.models.model_configs import LARGE3
 from src.baseline import evaluate_baseline_yolo
 from src.benchmark_functions import benchmark_baseline, benchmark_embds, benchmark_with_kf
 from src.comprehensive_test import run_comprehensive_tests
+from src.video.video_reader import iter_video_frames
 
 
 def run_baseline_benchmark():
@@ -73,7 +74,8 @@ def run_full_comparison():
         output_file="results/comprehensive_test_results.json",
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         test_keyframes=True,
-        force_regenerate_keyframes=False,
+        force_regenerate_keyframes=True,
+        force_regenerate_embeddings=True,
         save_keyframes=False,
         keyframe_selectors=['framediff', 'ssim', 'flow'],
         keyframe_params={
@@ -84,7 +86,22 @@ def run_full_comparison():
     )
 
 
+def save_frames_to_disk():
+    import os
+    vids = "/storage/ice1/8/3/rshah647/VIRATGround/videos_original"
+    names = ["VIRAT_S_000001.mp4",  "VIRAT_S_000003.mp4",  "VIRAT_S_000006.mp4", "VIRAT_S_000002.mp4",  "VIRAT_S_000004.mp4",]
+    for vid in names:
+        vid_path = os.path.join(vids, vid)
+        vid_name = vid.split(".")[0]
+        print(f"Processing {vid_name}...")
+        out_dir = f"data/VIRAT/{vid_name}/"
+        for frame, frame_idx in iter_video_frames(vid_path, out_dir, target_fps=1.0):
+            # print(frame_idx)
+            pass
+        
+
 if __name__ == "__main__":
     print("Running full comparison...", time.strftime("%Y-%m-%d %H:%M:%S"))
     run_full_comparison()
+    # run_embedding_benchmark()
     print("Full comparison done!", time.strftime("%Y-%m-%d %H:%M:%S"))

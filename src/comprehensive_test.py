@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from tabulate import tabulate
 
+from src.indexing.faiss_index import FAISSIndex
 from src.models.model_configs import LARGE3
 from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
 from src.benchmark_functions import benchmark_baseline, benchmark_embds, benchmark_with_kf
@@ -186,11 +187,27 @@ def run_comprehensive_tests(
     videos_source_dir: str,
     test_keyframes: bool,
     force_regenerate_keyframes: bool,
+    force_regenerate_embeddings: bool,
     save_keyframes: bool,
     keyframe_selectors: list[str] = None,
     keyframe_params: dict = None
 ):
     """Run comprehensive tests."""
+
+    embedder = CLIPEmbedder(CLIP_VIT_B32)
+    def generate_dense_embds():
+        from benchmark_functions import generate_full_embeddings
+        videos_source_path = Path(videos_source_dir)
+        video_files = sorted([f for f in videos_source_path.glob("*.mp4")])[:num_videos]
+        for video_file in video_files:
+            generate_full_embeddings(
+                video_path=str(video_file),
+                out_dir=str(video_file.parent),
+                embedder=embedder,
+                target_fps=1.0,
+                force=force_regenerate_embeddings,
+            )
+
     if test_keyframes and keyframe_selectors is None:
         keyframe_selectors = ['framediff']
     elif not test_keyframes:
@@ -229,6 +246,8 @@ def run_comprehensive_tests(
         'keyframe_results': {},
         'baseline_results': {}
     }
+
+    generate_dense_embds()
     
     all_results['no_keyframes']['pipeline_results'] = benchmark_embds(
         data_dir=data_dir,
@@ -257,7 +276,8 @@ def run_comprehensive_tests(
                 thresholds=thresholds,
                 videos_source_dir=videos_source_dir,
                 embedder=embedder,
-                force_regenerate=force_regenerate_keyframes,
+                force_regenerate=force_regenerate_embeddings,
+                force_regenerate_kf=force_regenerate_keyframes,
                 save_keyframes=save_keyframes
             )
     

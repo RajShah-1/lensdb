@@ -12,11 +12,11 @@ from src.utils import get_best_device
 
 class SemanticQueryPipeline:
     def __init__(self, data_dir: str, checkpoint_path: str, model_config: ModelConfig,
-                 threshold: float = 0.2, top_k: int | None = None):
+                 threshold: float = 0.2, top_k: int | None = None, use_keyframes: bool = False):
         self.data_dir = Path(data_dir)
         self.threshold = threshold
         self.top_k = top_k
-        
+        self.use_keyframes = use_keyframes
         self.index = FAISSIndex(data_dir)
         self.index.load()
         
@@ -46,6 +46,9 @@ class SemanticQueryPipeline:
         return keyframe_indices, keyframe_mapping, metadata
     
     def _expand_keyframes_to_frames(self, video_name: str, keyframe_results: list):
+        if not self.use_keyframes:
+            return keyframe_results
+        
         keyframe_indices, keyframe_mapping, _ = self._load_keyframe_metadata(video_name)
         
         if keyframe_mapping is None:
@@ -68,7 +71,7 @@ class SemanticQueryPipeline:
         frame_results.sort(key=lambda x: x['frame_idx'])
         return frame_results
     
-    def query(self, text_query: str, count_predicate=None):
+    def query(self, text_query: str, emb_filename: str, count_predicate=None):
         print(f"\n{'='*60}")
         print(f"QUERY: '{text_query}'")
         print(f"{'='*60}")
@@ -85,7 +88,7 @@ class SemanticQueryPipeline:
         results = {}
         
         for video_name, frames_data in candidates.items():
-            emb_path = self.data_dir / video_name / "embeddings" / "embds.npy"
+            emb_path = self.data_dir / video_name / "embeddings" / emb_filename
             embeddings = np.load(emb_path).astype("float32")
             
             frame_indices = [f['frame_idx'] for f in frames_data]
@@ -138,7 +141,7 @@ class SemanticQueryPipeline:
         return results
     
     def query_with_metrics(self, text_query: str, count_threshold: int,
-                          eval_videos: list, data_dir: str):
+                          eval_videos: list, data_dir: str, emb_filename: str):
         def load_ground_truth(video_name: str, target: str):
             counts_file = Path(data_dir) / video_name / "counts.csv"
             counts = {}
@@ -186,7 +189,7 @@ class SemanticQueryPipeline:
         results = {}
         
         for video_name, frames_data in candidates.items():
-            emb_path = self.data_dir / video_name / "embeddings" / "embds.npy"
+            emb_path = self.data_dir / video_name / "embeddings" / emb_filename
             embeddings = np.load(emb_path).astype("float32")
             
             frame_indices = [f['frame_idx'] for f in frames_data]

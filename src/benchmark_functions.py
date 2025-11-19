@@ -55,12 +55,18 @@ def benchmark_embds(data_dir: str, checkpoint_path: str, model_config, target: s
     video_dirs = sorted([d for d in data_path.iterdir() 
                         if d.is_dir() and not d.name.startswith("_")])
     eval_videos = [v.name for v in video_dirs[:num_videos]]
+
+    # ---------- Build FAISS index over resulting embeddings ----------
+    print(f"\nBuilding FAISS index...")
+    faiss_index = FAISSIndex(data_dir, use_keyframes=False)
+    faiss_index.build()
     
     pipeline = SemanticQueryPipeline(
         data_dir=data_dir,
         checkpoint_path=checkpoint_path,
         model_config=model_config,
-        threshold=similarity_threshold
+        threshold=similarity_threshold,
+        use_keyframes=False
     )
     
     pipeline_results = {}
@@ -70,13 +76,15 @@ def benchmark_embds(data_dir: str, checkpoint_path: str, model_config, target: s
             text_query=target,
             count_threshold=threshold,
             eval_videos=eval_videos,
-            data_dir=data_dir
+            data_dir=data_dir,
+            emb_filename="embds_clip_full.npy",
         )
         pipeline_results[threshold] = metrics
         print(f"  T>={threshold}: R={metrics['mlp_recall']:.3f}, F1={metrics['mlp_f1']:.3f}, "
               f"Lat={metrics['total_latency_ms']:.1f}ms")
         print(f"    TP={metrics['mlp_tp']}, FP={metrics['mlp_fp']}, FN={metrics['mlp_fn']}")
     
+    faiss_index.clean_index()
     return pipeline_results
 
 
@@ -86,7 +94,7 @@ def _process_video_worker(args):
     Creates embedder fresh in each process to avoid CUDA context issues.
     
     Args: (video_dir_str, video_name, videos_source_dir, kf_method, kf_params,
-           embedder_config, target_fps, force_regenerate, save_keyframes, worker_id, log_file)
+           embedder_config, target_fps, force_regenerate, force_regenerate_kf, save_keyframes, worker_id, log_file)
     """
     import sys
     import traceback
@@ -94,7 +102,7 @@ def _process_video_worker(args):
     
     try:
         (video_dir_str, video_name, videos_source_dir, kf_method, kf_params,
-         embedder_config, target_fps, force_regenerate, save_keyframes, worker_id, log_file) = args
+         embedder_config, target_fps, force_regenerate, force_regenerate_kf, save_keyframes, worker_id, log_file) = args
         
         # Redirect stdout/stderr to log file
         if log_file:
@@ -140,7 +148,7 @@ def _process_video_worker(args):
             preselector=preselector,
             embedder=embedder,
             target_fps=target_fps,
-            force=force_regenerate,
+            force=force_regenerate_kf, 
             save_keyframes=save_keyframes,
         )
         
@@ -178,6 +186,7 @@ def benchmark_with_kf(
     videos_source_dir: str,
     embedder: CLIPEmbedder,
     force_regenerate: bool,
+    force_regenerate_kf: bool,
     save_keyframes: bool,
     num_workers: int = 1,
 ):
@@ -233,50 +242,15 @@ def benchmark_with_kf(
         'model_name': embedder_cfg.model_name,
     }
     
-    # ---------- Parallel per-video section ----------
-    if num_workers <= 1:
-        # Fallback: sequential
-        print(f"  Running sequentially (num_workers={num_workers})")
-        for idx, vd in enumerate(video_dirs, 1):
-            log_file = str(log_dir / f"worker_{idx}.log")
-            args = (str(vd), vd.name, videos_source_dir, kf_method, kf_params,
-                   embedder_config_dict, 1.0, force_regenerate, save_keyframes, idx, log_file)
-            md = _process_video_worker(args)
-            if md is not None:
-                results.append(md)
-    else:
-        # Parallel processing
-        print(f"  Spawning {num_workers} worker processes...")
-        worker_args = [
-            (str(vd), vd.name, videos_source_dir, kf_method, kf_params,
-             embedder_config_dict, 1.0, force_regenerate, save_keyframes, idx, 
-             str(log_dir / f"worker_{idx}.log"))
-            for idx, vd in enumerate(video_dirs, 1)
-        ]
-        
-        print(f"  Submitting {len(worker_args)} videos to process pool")
-        
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(_process_video_worker, args): args[1] 
-                      for args in worker_args}
-            
-            print(f"  Waiting for {len(futures)} tasks to complete...")
-            
-            completed = 0
-            for future in as_completed(futures):
-                video_name = futures[future]
-                completed += 1
-                try:
-                    md = future.result()
-                    if md is not None:
-                        results.append(md)
-                        print(f"  [{completed}/{len(futures)}] Completed: {video_name}")
-                    else:
-                        print(f"  [{completed}/{len(futures)}] No result: {video_name}")
-                except Exception as e:
-                    print(f"  [{completed}/{len(futures)}] ERROR: {video_name} - {e}")
-                    import traceback
-                    traceback.print_exc()
+    # ---------- Sequential processing of per-video section ----------
+    print(f"  Running sequentially (num_workers={num_workers})")
+    for idx, vd in enumerate(video_dirs, 1):
+        log_file = str(log_dir / f"worker_{idx}.log")
+        args = (str(vd), vd.name, videos_source_dir, kf_method, kf_params,
+                embedder_config_dict, 1.0, force_regenerate, force_regenerate_kf, save_keyframes, idx, log_file)
+        md = _process_video_worker(args)
+        if md is not None:
+            results.append(md)
 
     # ---------- Aggregate compression stats ----------
     if results:
@@ -287,7 +261,7 @@ def benchmark_with_kf(
 
     # ---------- Build FAISS index over resulting embeddings ----------
     print(f"\nBuilding FAISS index...")
-    faiss_index = FAISSIndex(data_dir)
+    faiss_index = FAISSIndex(data_dir, use_keyframes=True)
     faiss_index.build()
 
     # ---------- Run query pipeline ----------
@@ -306,6 +280,7 @@ def benchmark_with_kf(
             count_threshold=threshold,
             eval_videos=eval_videos,
             data_dir=data_dir,
+            emb_filename="embds.npy",
         )
         pipeline_results[threshold] = metrics
         print(f"  T>={threshold}: R={metrics['mlp_recall']:.3f}, F1={metrics['mlp_f1']:.3f}, "
@@ -316,6 +291,7 @@ def benchmark_with_kf(
         if metrics.get('negative_kf_indices'):
             print(f"    Negative Frames: {', '.join(map(str, metrics['negative_kf_indices']))}")
     
+    faiss_index.clean_index()
     return {
         "metadata": results,
         "pipeline_results": pipeline_results,
