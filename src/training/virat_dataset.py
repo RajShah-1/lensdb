@@ -17,7 +17,7 @@ class VIRATCountDataset(Dataset):
     def _load_data(self):
         for video_name in self.video_names:
             video_dir = self.data_dir / video_name
-            embeddings_file = video_dir / "embeddings" / "embds.npy"
+            embeddings_file = video_dir / "embeddings" / "embds_clip_full.npy"
             counts_file = video_dir / "counts.csv"
             
             if not embeddings_file.exists() or not counts_file.exists():

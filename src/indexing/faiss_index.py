@@ -47,7 +47,7 @@ class FAISSIndex:
                 continue
             
             embs = np.load(emb_path).astype("float32")
-            embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
+            # embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
             
             all_embeddings.append(embs)
             video_metadata.append({
@@ -98,7 +98,7 @@ class FAISSIndex:
             text_features = embedder.model.get_text_features(**inputs)
         
         query_vec = text_features.cpu().numpy().astype("float32")
-        query_vec = query_vec / (np.linalg.norm(query_vec, axis=1, keepdims=True) + 1e-8)
+        # query_vec = query_vec / (np.linalg.norm(query_vec, axis=1, keepdims=True) + 1e-8)
         
         k = top_k or self.index.ntotal
         

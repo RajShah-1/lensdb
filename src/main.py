@@ -75,7 +75,7 @@ def run_full_comparison():
         videos_source_dir="/storage/ice1/8/3/rshah647/VIRATGround/videos_original",
         test_keyframes=True,
         force_regenerate_keyframes=True,
-        force_regenerate_embeddings=True,
+        force_regenerate_embeddings=False,
         save_keyframes=False,
         keyframe_selectors=['framediff', 'ssim', 'flow'],
         keyframe_params={
