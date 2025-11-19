@@ -270,6 +270,7 @@ def benchmark_with_kf(
         checkpoint_path=checkpoint_path,
         model_config=model_config,
         threshold=similarity_threshold,
+        use_keyframes=True,
     )
 
     pipeline_results = {}

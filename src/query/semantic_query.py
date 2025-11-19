@@ -50,8 +50,10 @@ class SemanticQueryPipeline:
             return keyframe_results
         
         keyframe_indices, keyframe_mapping, _ = self._load_keyframe_metadata(video_name)
+        print(f"Keyframe indices: {keyframe_indices}")
         
         if keyframe_mapping is None:
+            print(f"WARNING: Keyframe mapping not found for video {video_name}")
             return keyframe_results
         
         frame_results = []
@@ -109,8 +111,9 @@ class SemanticQueryPipeline:
                         'similarity': frame_data['similarity'],
                         'predicted_count': pred_count_rounded
                     })
-            
-            # video_results = self._expand_keyframes_to_frames(video_name, video_results)
+                
+            if self.use_keyframes:
+                video_results = self._expand_keyframes_to_frames(video_name, video_results)
             
             if video_results:
                 results[video_name] = {
@@ -168,8 +171,9 @@ class SemanticQueryPipeline:
                                     'similarity': f['similarity'], 
                                     'predicted_count': 0} 
                                    for f in candidates[video_name]]
-                # expanded_results = self._expand_keyframes_to_frames(video_name, keyframe_results)
                 expanded_results = keyframe_results
+                if self.use_keyframes:
+                    expanded_results = self._expand_keyframes_to_frames(video_name, keyframe_results)
                 retrieved_frames = {f['frame_idx'] for f in expanded_results}
             else:
                 retrieved_frames = set()
@@ -203,7 +207,7 @@ class SemanticQueryPipeline:
             video_results = []
             for i, frame_data in enumerate(frames_data):
                 pred_count_rounded = round(float(predictions[i]))
-                # print(f"pred_count_rounded: {pred_count_rounded} for frame {frame_data['frame_idx']}")
+                # print(f"P_rounded: {pred_count_rounded} for frame {frame_data['frame_idx']}")
                 if pred_count_rounded >= count_threshold:
                     video_results.append({
                         'frame_idx': frame_data['frame_idx'],
@@ -211,7 +215,8 @@ class SemanticQueryPipeline:
                         'predicted_count': pred_count_rounded
                     })
             
-            # video_results = self._expand_keyframes_to_frames(video_name, video_results)
+            if self.use_keyframes:
+                video_results = self._expand_keyframes_to_frames(video_name, video_results)
             
             if video_results:
                 results[video_name] = {
