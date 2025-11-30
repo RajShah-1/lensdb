@@ -98,7 +98,7 @@ def select_keyframes_from_full(video_path: str, out_dir: str, preselector: BaseP
     num_keyframes = len(keyframe_indices)
     
     if save_keyframes:
-        keyframes_dir = out_path / "keyframes"
+        keyframes_dir = out_path / "keyframes" / preselector.__class__.__name__
         keyframes_dir.mkdir(exist_ok=True)
         
         sampled_to_orig = np.load(embeddings_dir / "sampled_to_orig.npy")

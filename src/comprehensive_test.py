@@ -249,15 +249,15 @@ def run_comprehensive_tests(
 
     generate_dense_embds()
     
-    all_results['no_keyframes']['pipeline_results'] = benchmark_embds(
-        data_dir=data_dir,
-        checkpoint_path=checkpoint_path,
-        model_config=model_config,
-        target=target,
-        similarity_threshold=similarity_threshold,
-        num_videos=num_videos,
-        thresholds=thresholds
-    )
+    # all_results['no_keyframes']['pipeline_results'] = benchmark_embds(
+    #     data_dir=data_dir,
+    #     checkpoint_path=checkpoint_path,
+    #     model_config=model_config,
+    #     target=target,
+    #     similarity_threshold=similarity_threshold,
+    #     num_videos=num_videos,
+    #     thresholds=thresholds
+    # )
     
     if test_keyframes:
         embedder = CLIPEmbedder(CLIP_VIT_B32)

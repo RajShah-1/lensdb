@@ -66,7 +66,8 @@ def run_semantic_query():
         data_dir="data/VIRAT",
         checkpoint_path="models/checkpoints/car_virat_finetuned.pth",
         model_config=MEDIUM,
-        threshold=0.2
+        threshold=0.2,
+        use_keyframes=False
     )
     
     results = pipeline.query(
@@ -120,6 +121,7 @@ def evaluate_retrieval(data_dir: str, checkpoint_path: str, model_config,
         checkpoint_path=checkpoint_path,
         model_config=model_config,
         threshold=similarity_threshold,
+        use_keyframes=False
     )
     
     # Get metrics from pipeline which now includes timing
