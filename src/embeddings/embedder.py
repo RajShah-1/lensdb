@@ -30,16 +30,17 @@ class DummyEmbedder(Embedder):
 
 @dataclass
 class EmbedderConfig:
+    name: str
     processor_name: str
     model_name: str
 
-CLIP_VIT_B32 = EmbedderConfig("openai/clip-vit-base-patch32",
-                              "openai/clip-vit-base-patch32")
-MOBILE_CLIP_VIT_PATCH16 = EmbedderConfig("apple/mobileclip-vit-base-patch16",
-                                         "apple/mobileclip-vit-base-patch16")
+CLIP_VIT_B32 = EmbedderConfig("clip", "openai/clip-vit-base-patch32", "openai/clip-vit-base-patch32")
+MOBILE_CLIP_VIT_PATCH16 = EmbedderConfig("mobileclip", "apple/mobileclip-vit-base-patch16", "apple/mobileclip-vit-base-patch16")
+
 class CLIPEmbedder(Embedder):
     """CLIP based Embedder (image -> semantic vector)."""
-    def __init__(self, cfg : EmbedderConfig):
+    def __init__(self, cfg: EmbedderConfig):
+        self.name = cfg.name
         self.device = get_best_device()
         from transformers import AutoProcessor, AutoModelForZeroShotImageClassification
         self.processor = AutoProcessor.from_pretrained(cfg.processor_name)

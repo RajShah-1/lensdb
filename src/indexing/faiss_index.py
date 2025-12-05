@@ -8,13 +8,29 @@ from src.embeddings.embedder import CLIPEmbedder, CLIP_VIT_B32
 
 
 class FAISSIndex:
-    def __init__(self, data_dir: str, dim: int = 512):
+    def __init__(self, data_dir: str, dim: int = 512, use_keyframes: bool = True):
         self.data_dir = Path(data_dir)
         self.dim = dim
         self.index_path = self.data_dir / "_index" / "clip.index"
         self.metadata_path = self.data_dir / "_index" / "video_metadata.npy"
         self.index = None
         self.video_metadata = None
+        self.use_keyframes = use_keyframes
+
+    def clean_index(self):
+        # delete the clip.index and video_metadata.npy files
+        if self.index_path.exists():
+            self.index_path.unlink()
+        if self.metadata_path.exists():
+            self.metadata_path.unlink()
+        self.index = None
+        self.video_metadata = None
+
+    def get_emb_filename(self):
+        if self.use_keyframes:
+            return "embds.npy"
+        else:
+            return "embds_clip_full.npy"
     
     def build(self):
         print(f"Building FAISS index from {self.data_dir}")
@@ -26,21 +42,22 @@ class FAISSIndex:
             if not video_dir.is_dir() or video_dir.name.startswith("_"):
                 continue
             
-            emb_path = video_dir / "embeddings" / "embds.npy"
+            emb_path = video_dir / "embeddings" / self.get_emb_filename()
             if not emb_path.exists():
                 continue
             
             embs = np.load(emb_path).astype("float32")
-            embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
+            # embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
             
             all_embeddings.append(embs)
             video_metadata.append({
                 'video_name': video_dir.name,
                 'num_frames': len(embs),
-                'start_idx': sum(len(e) for e in all_embeddings[:-1])
+                'start_idx': sum(len(e) for e in all_embeddings[:-1]),
+                'uses_keyframes': self.use_keyframes
             })
             
-            print(f"  {video_dir.name}: {len(embs)} frames")
+            print(f"  {video_dir.name}: {len(embs)} {'keyframes' if self.use_keyframes else 'frames'}")
         
         if not all_embeddings:
             raise ValueError(f"No embeddings found in {self.data_dir}")
@@ -81,11 +98,10 @@ class FAISSIndex:
             text_features = embedder.model.get_text_features(**inputs)
         
         query_vec = text_features.cpu().numpy().astype("float32")
-        query_vec = query_vec / (np.linalg.norm(query_vec, axis=1, keepdims=True) + 1e-8)
+        # query_vec = query_vec / (np.linalg.norm(query_vec, axis=1, keepdims=True) + 1e-8)
         
-        k = top_k if top_k else self.index.ntotal
+        k = top_k or self.index.ntotal
         
-        # Measure FAISS search latency
         start_time = time.perf_counter()
         similarities, indices = self.index.search(query_vec, k)
         faiss_latency_ms = (time.perf_counter() - start_time) * 1000
