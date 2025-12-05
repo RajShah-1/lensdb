@@ -155,9 +155,12 @@ class SemanticQueryPipeline:
                     counts[frame_id] = int(row['car_count' if target == "car" else 'people_count'])
             return counts
         
+        faiss_start = time.perf_counter()
         candidates, faiss_latency_ms = self.index.query_text(
             text_query, top_k=self.top_k, similarity_threshold=self.threshold
         )
+        faiss_total_ms = (time.perf_counter() - faiss_start) * 1000
+        print(f"[PROFILE] FAISS search completed: {faiss_latency_ms:.2f} ms (total including text embedding: {faiss_total_ms:.2f} ms)")
         
         faiss_tp, faiss_fp, faiss_fn, faiss_retrieved_count = 0, 0, 0, 0
         
@@ -190,6 +193,8 @@ class SemanticQueryPipeline:
         faiss_denom_f1 = faiss_precision + faiss_recall
         faiss_f1 = 2 * faiss_precision * faiss_recall / faiss_denom_f1 if faiss_denom_f1 > 0 else 0.0
         
+        mlp_start = time.perf_counter()
+
         results = {}
         decode_latency_ms = 0.0
         inference_latency_ms = 0.0
@@ -232,6 +237,11 @@ class SemanticQueryPipeline:
                 }
         
         mlp_latency_ms = decode_latency_ms + inference_latency_ms
+        mlp_total_ms = (time.perf_counter() - mlp_start) * 1000
+        print(f"[PROFILE] MLP inference completed:")
+        print(f"  - Decode (load embeddings): {decode_latency_ms:.2f} ms")
+        print(f"  - Inference (model forward): {inference_latency_ms:.2f} ms")
+        print(f"  - Total MLP: {mlp_latency_ms:.2f} ms (overhead: {mlp_total_ms - mlp_latency_ms:.2f} ms)")
         
         mlp_tp, mlp_fp, mlp_fn, mlp_retrieved_count = 0, 0, 0, 0
         positive_kf_indices = []

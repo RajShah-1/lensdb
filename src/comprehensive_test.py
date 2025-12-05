@@ -65,15 +65,17 @@ def generate_latency_table(threshold, no_kf_results, keyframe_results, baseline_
             f"{speedup:.2f}x"
         ])
     
-    baseline = baseline_results[threshold]
-    yolo_speedup = baseline['avg_latency_ms'] / no_kf['total_latency_ms']
-    table.append([
-        f'YOLO {yolo_model}',
-        f"{baseline['avg_latency_ms']:.2f}",
-        f"{baseline['recall']:.3f}",
-        f"{baseline['f1']:.3f}",
-        f"{yolo_speedup:.2f}x"
-    ])
+    # Only add YOLO baseline if results exist
+    if baseline_results and threshold in baseline_results:
+        baseline = baseline_results[threshold]
+        yolo_speedup = baseline['avg_latency_ms'] / no_kf['total_latency_ms']
+        table.append([
+            f'YOLO {yolo_model}',
+            f"{baseline['avg_latency_ms']:.2f}",
+            f"{baseline['recall']:.3f}",
+            f"{baseline['f1']:.3f}",
+            f"{yolo_speedup:.2f}x"
+        ])
     
     return tabulate(
         table,
@@ -120,19 +122,21 @@ def generate_detailed_metrics_table(no_kf_results, keyframe_results, baseline_re
             f"{kf_avg['mlp_f1']:.3f}"
         ])
     
-    baseline_avg = compute_averages(baseline_results, thresholds, 
-                                    ['avg_latency_ms', 'avg_decode_latency_ms', 'avg_inference_latency_ms',
-                                     'recall', 'precision', 'f1'])
-    table.append([
-        f'YOLO {yolo_model}',
-        f"{baseline_avg['avg_latency_ms']:.2f}",
-        "N/A",
-        f"{baseline_avg['avg_decode_latency_ms']:.2f}",
-        f"{baseline_avg['avg_inference_latency_ms']:.2f}",
-        f"{baseline_avg['recall']:.3f}",
-        f"{baseline_avg['precision']:.3f}",
-        f"{baseline_avg['f1']:.3f}"
-    ])
+    # Only add YOLO baseline if results exist
+    if baseline_results and any(threshold in baseline_results for threshold in thresholds):
+        baseline_avg = compute_averages(baseline_results, thresholds, 
+                                        ['avg_latency_ms', 'avg_decode_latency_ms', 'avg_inference_latency_ms',
+                                         'recall', 'precision', 'f1'])
+        table.append([
+            f'YOLO {yolo_model}',
+            f"{baseline_avg['avg_latency_ms']:.2f}",
+            "N/A",
+            f"{baseline_avg['avg_decode_latency_ms']:.2f}",
+            f"{baseline_avg['avg_inference_latency_ms']:.2f}",
+            f"{baseline_avg['recall']:.3f}",
+            f"{baseline_avg['precision']:.3f}",
+            f"{baseline_avg['f1']:.3f}"
+        ])
     
     return tabulate(
         table,
@@ -285,14 +289,16 @@ def run_comprehensive_tests(
                 save_keyframes=save_keyframes
             )
     
-    all_results['baseline_results'] = benchmark_baseline(
-        data_dir=data_dir,
-        target=target,
-        num_videos=num_videos,
-        thresholds=thresholds,
-        yolo_model=yolo_model,
-        videos_source_dir=videos_source_dir
-    )
+    # Commented out YOLO baseline - not running this pipeline anymore
+    # all_results['baseline_results'] = benchmark_baseline(
+    #     data_dir=data_dir,
+    #     target=target,
+    #     num_videos=num_videos,
+    #     thresholds=thresholds,
+    #     yolo_model=yolo_model,
+    #     videos_source_dir=videos_source_dir
+    # )
+    all_results['baseline_results'] = {}
     
     print("\n" + "="*80)
     print("RESULTS")
