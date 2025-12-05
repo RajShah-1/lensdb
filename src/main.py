@@ -77,8 +77,7 @@ def run_full_comparison():
         force_regenerate_keyframes=True,
         force_regenerate_embeddings=False,
         save_keyframes=True,
-        keyframe_selectors=['flow', "mog2"],
-        # keyframe_selectors=['mog2'],
+        keyframe_selectors=['flow', "mog2", "ssim", "framediff"],
         keyframe_params={
             'framediff': {'k_mad': 2.5, 'min_spacing': 6},
             'ssim': {'k_mad': 2.5, 'min_spacing': 6},

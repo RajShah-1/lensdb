@@ -26,7 +26,8 @@ def get_preselector(method: str, **kwargs):
 
 
 def benchmark_baseline(data_dir: str, target: str, num_videos: int, 
-                      thresholds: list[int], yolo_model: str):
+                      thresholds: list[int], yolo_model: str,
+                      videos_source_dir: str):
     """Benchmark YOLO baseline."""
     print(f"\n[YOLO Baseline: {yolo_model}]")
     baseline_results = {}
@@ -34,6 +35,7 @@ def benchmark_baseline(data_dir: str, target: str, num_videos: int,
     for threshold in thresholds:
         metrics = evaluate_baseline_yolo(
             data_dir=data_dir,
+            videos_source_dir=videos_source_dir,
             model_name=yolo_model,
             target=target,
             count_threshold=threshold,

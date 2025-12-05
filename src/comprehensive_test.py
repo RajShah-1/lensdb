@@ -89,14 +89,15 @@ def generate_detailed_metrics_table(no_kf_results, keyframe_results, baseline_re
     
     no_kf_avg = compute_averages(no_kf_results, thresholds, [
         'total_latency_ms', 'mlp_recall', 'mlp_precision', 'mlp_f1',
-        'faiss_latency_ms', 'mlp_latency_ms'
+        'faiss_latency_ms', 'decode_latency_ms', 'inference_latency_ms'
     ])
     
     table.append([
         'No Keyframes',
         f"{no_kf_avg['total_latency_ms']:.2f}",
         f"{no_kf_avg['faiss_latency_ms']:.2f}",
-        f"{no_kf_avg['mlp_latency_ms']:.2f}",
+        f"{no_kf_avg['decode_latency_ms']:.2f}",
+        f"{no_kf_avg['inference_latency_ms']:.2f}",
         f"{no_kf_avg['mlp_recall']:.3f}",
         f"{no_kf_avg['mlp_precision']:.3f}",
         f"{no_kf_avg['mlp_f1']:.3f}"
@@ -106,25 +107,28 @@ def generate_detailed_metrics_table(no_kf_results, keyframe_results, baseline_re
         kf_avg = compute_averages(keyframe_results[selector_name]['pipeline_results'], 
                                   thresholds, [
             'total_latency_ms', 'mlp_recall', 'mlp_precision', 'mlp_f1',
-            'faiss_latency_ms', 'mlp_latency_ms'
+            'faiss_latency_ms', 'decode_latency_ms', 'inference_latency_ms'
         ])
         table.append([
             f"w/ {selector_name}",
             f"{kf_avg['total_latency_ms']:.2f}",
             f"{kf_avg['faiss_latency_ms']:.2f}",
-            f"{kf_avg['mlp_latency_ms']:.2f}",
+            f"{kf_avg['decode_latency_ms']:.2f}",
+            f"{kf_avg['inference_latency_ms']:.2f}",
             f"{kf_avg['mlp_recall']:.3f}",
             f"{kf_avg['mlp_precision']:.3f}",
             f"{kf_avg['mlp_f1']:.3f}"
         ])
     
     baseline_avg = compute_averages(baseline_results, thresholds, 
-                                    ['avg_latency_ms', 'recall', 'precision', 'f1'])
+                                    ['avg_latency_ms', 'avg_decode_latency_ms', 'avg_inference_latency_ms',
+                                     'recall', 'precision', 'f1'])
     table.append([
         f'YOLO {yolo_model}',
         f"{baseline_avg['avg_latency_ms']:.2f}",
         "N/A",
-        "N/A",
+        f"{baseline_avg['avg_decode_latency_ms']:.2f}",
+        f"{baseline_avg['avg_inference_latency_ms']:.2f}",
         f"{baseline_avg['recall']:.3f}",
         f"{baseline_avg['precision']:.3f}",
         f"{baseline_avg['f1']:.3f}"
@@ -132,7 +136,7 @@ def generate_detailed_metrics_table(no_kf_results, keyframe_results, baseline_re
     
     return tabulate(
         table,
-        headers=['Method', 'Total (ms)', 'FAISS (ms)', 'MLP (ms)', 'Recall', 'Precision', 'F1'],
+        headers=['Method', 'Total (ms)', 'FAISS (ms)', 'Decode (ms)', 'Inference (ms)', 'Recall', 'Precision', 'F1'],
         tablefmt='grid'
     )
 
@@ -286,7 +290,8 @@ def run_comprehensive_tests(
         target=target,
         num_videos=num_videos,
         thresholds=thresholds,
-        yolo_model=yolo_model
+        yolo_model=yolo_model,
+        videos_source_dir=videos_source_dir
     )
     
     print("\n" + "="*80)

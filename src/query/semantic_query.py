@@ -190,19 +190,25 @@ class SemanticQueryPipeline:
         faiss_denom_f1 = faiss_precision + faiss_recall
         faiss_f1 = 2 * faiss_precision * faiss_recall / faiss_denom_f1 if faiss_denom_f1 > 0 else 0.0
         
-        mlp_start = time.perf_counter()
         results = {}
+        decode_latency_ms = 0.0
+        inference_latency_ms = 0.0
         
         for video_name, frames_data in candidates.items():
+            # Decode: Load embeddings from disk
+            decode_start = time.perf_counter()
             emb_path = self.data_dir / video_name / "embeddings" / emb_filename
             embeddings = np.load(emb_path).astype("float32")
-            
             frame_indices = [f['frame_idx'] for f in frames_data]
             frame_embeddings = embeddings[frame_indices]
+            decode_latency_ms += (time.perf_counter() - decode_start) * 1000
             
+            # Inference: Model forward pass
+            inference_start = time.perf_counter()
             with torch.no_grad():
                 emb_tensor = torch.from_numpy(frame_embeddings).to(self.device)
                 predictions = self.model(emb_tensor).cpu().numpy()
+            inference_latency_ms += (time.perf_counter() - inference_start) * 1000
             
             video_results = []
             for i, frame_data in enumerate(frames_data):
@@ -225,7 +231,7 @@ class SemanticQueryPipeline:
                     'avg_count': float(np.mean([f['predicted_count'] for f in video_results]))
                 }
         
-        mlp_latency_ms = (time.perf_counter() - mlp_start) * 1000
+        mlp_latency_ms = decode_latency_ms + inference_latency_ms
         
         mlp_tp, mlp_fp, mlp_fn, mlp_retrieved_count = 0, 0, 0, 0
         positive_kf_indices = []
@@ -261,6 +267,8 @@ class SemanticQueryPipeline:
         
         return {
             'faiss_latency_ms': faiss_latency_ms,
+            'decode_latency_ms': decode_latency_ms,
+            'inference_latency_ms': inference_latency_ms,
             'mlp_latency_ms': mlp_latency_ms,
             'total_latency_ms': faiss_latency_ms + mlp_latency_ms,
             'faiss_precision': faiss_precision,
